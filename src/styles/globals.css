@@ -1,0 +1,177 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+  
+  /* EduAI Design System Colors */
+  --edu-primary-blue: #1E3A8A;
+  --edu-primary-blue-hover: #1E40AF;
+  --edu-secondary-green: #059669;
+  --edu-secondary-green-light: #D1FAE5;
+  --edu-accent-orange: #F59E0B;
+  --edu-accent-orange-light: #FEF3C7;
+  --edu-error-red: #DC2626;
+  --edu-error-red-light: #FEE2E2;
+  
+  --edu-neutral-900: #111827;
+  --edu-neutral-700: #374151;
+  --edu-neutral-500: #6B7280;
+  --edu-neutral-300: #D1D5DB;
+  --edu-neutral-100: #F3F4F6;
+  --edu-neutral-50: #F9FAFB;
+  
+  /* Theme tokens */
+  --background: #F9FAFB;
+  --foreground: #111827;
+  --card: #FFFFFF;
+  --card-foreground: #111827;
+  --popover: #FFFFFF;
+  --popover-foreground: #111827;
+  --primary: #1E3A8A;
+  --primary-foreground: #FFFFFF;
+  --secondary: #FFFFFF;
+  --secondary-foreground: #374151;
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+  --accent: #F3F4F6;
+  --accent-foreground: #111827;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --border: #D1D5DB;
+  --input: #D1D5DB;
+  --input-background: #FFFFFF;
+  --ring: #1E3A8A;
+  
+  --radius: 0.5rem;
+  
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #374151;
+  --sidebar-primary: #1E3A8A;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EFF6FF;
+  --sidebar-accent-foreground: #1E3A8A;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #1E3A8A;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-ring: var(--ring);
+  
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+  
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* EduAI Custom Colors */
+  --color-edu-primary-blue: var(--edu-primary-blue);
+  --color-edu-primary-blue-hover: var(--edu-primary-blue-hover);
+  --color-edu-secondary-green: var(--edu-secondary-green);
+  --color-edu-secondary-green-light: var(--edu-secondary-green-light);
+  --color-edu-accent-orange: var(--edu-accent-orange);
+  --color-edu-accent-orange-light: var(--edu-accent-orange-light);
+  --color-edu-error-red: var(--edu-error-red);
+  --color-edu-error-red-light: var(--edu-error-red-light);
+  --color-edu-neutral-900: var(--edu-neutral-900);
+  --color-edu-neutral-700: var(--edu-neutral-700);
+  --color-edu-neutral-500: var(--edu-neutral-500);
+  --color-edu-neutral-300: var(--edu-neutral-300);
+  --color-edu-neutral-100: var(--edu-neutral-100);
+  --color-edu-neutral-50: var(--edu-neutral-50);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-[#F9FAFB] text-[#111827];
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer base {
+  :where(:not(:has([class*=' text-']), :not(:has([class^='text-'])))) {
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+
+    h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    h4 {
+      font-size: 1.125rem;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}
+
+/* Custom utility classes for EduAI */
+@layer utilities {
+  .transition-default {
+    transition: all 150ms ease-in-out;
+  }
+  
+  .shadow-edu-sm {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+  
+  .shadow-edu-md {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+  }
+  
+  .shadow-edu-lg {
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+  }
+  
+  .shadow-edu-xl {
+    box-shadow: 0 20px 25px rgba(0, 0, 0, 0.15);
+  }
+}
