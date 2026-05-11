@@ -13,24 +13,26 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 interface AppSidebarProps {
   currentPage: string;
   onNavigate: (page: any) => void;
   onLogout?: () => void;
-  userName?: string;
-  userEmail?: string;
 }
 
-export function AppSidebar({
-  currentPage,
-  onNavigate,
-  onLogout,
-  userName = 'Iusupov Alimzhan',
-  userEmail = '1231301318@student.mmu.edu.my',
-}: AppSidebarProps) {
+export function AppSidebar({ currentPage, onNavigate, onLogout }: AppSidebarProps) {
+  const { student } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // Derive initials from the student's name (e.g. "Iusupov Alimzhan" → "IA")
+  const initials = (student?.fullName ?? 'S')
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
@@ -97,12 +99,20 @@ export function AppSidebar({
             }`}
           >
             <div className="w-10 h-10 bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] rounded-full flex items-center justify-center flex-shrink-0">
-              <User className="w-5 h-5 text-white" />
+              {student?.fullName ? (
+                <span className="text-sm font-bold text-white">{initials}</span>
+              ) : (
+                <User className="w-5 h-5 text-white" />
+              )}
             </div>
             {!isCollapsed && (
               <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-[#111827] truncate">{userName}</p>
-                <p className="text-xs text-[#6B7280] truncate">{userEmail}</p>
+                <p className="text-sm font-medium text-[#111827] truncate">
+                  {student?.fullName ?? 'Student'}
+                </p>
+                <p className="text-xs text-[#6B7280] truncate">
+                  {student?.email ?? ''}
+                </p>
               </div>
             )}
           </button>
