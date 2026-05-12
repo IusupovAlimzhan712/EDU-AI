@@ -216,6 +216,45 @@ class TopicService:
                 key=lambda x: (x['formLevel'], x['chapterId']),
             ),
         }
+    
+    # =====================================================================
+    # PDF & per-page text (used by viewer + Phase 3 AI)
+    # =====================================================================
+
+    @staticmethod
+    def get_pdf_absolute_path(topic_id: int) -> str:
+        """Resolve a topic's PDF to an absolute path on disk.
+
+        Raises NotFoundError if the topic doesn't exist or has no PDF
+        registered, and if the file is missing on disk.
+        """
+        import os
+        from flask import current_app
+        topic = TopicService.get_topic(topic_id)
+        if not topic.pdf_path:
+            raise NotFoundError(f'Topic {topic_id} has no PDF registered.')
+        # PDFs live in backend/static/pdfs/<relative path>
+        backend_root = os.path.dirname(current_app.root_path)
+        abs_path = os.path.join(backend_root, 'static', 'pdfs', topic.pdf_path)
+        if not os.path.isfile(abs_path):
+            raise NotFoundError(
+                f'PDF file is registered but missing on disk: {topic.pdf_path}'
+            )
+        return abs_path
+
+    @staticmethod
+    def get_page_text(topic_id: int, page_number: int) -> dict:
+        """Return one page's extracted text + word count."""
+        from ..repositories import TopicPageRepository
+        # Confirm topic exists (also confirms 404 vs page-not-found)
+        TopicService.get_topic(topic_id)
+        page = TopicPageRepository.get(topic_id, page_number)
+        if not page:
+            raise NotFoundError(
+                f'Page {page_number} not found for topic {topic_id}. '
+                f'Has the PDF been ingested?'
+            )
+        return page.to_dict()
 
     # =====================================================================
     # Helpers

@@ -159,14 +159,24 @@ export interface TopicSummary {
   topicName: string;
   chapterName: string;
   estimatedDurationMinutes: number | null;
+  hasPdf: boolean;
+  totalPages: number;
   isCompleted: boolean;
   isBookmarked: boolean;
 }
 
 export interface TopicDetail extends TopicSummary {
-  content: string;
-  pdfReference: string | null;
+  pdfPath: string | null;
 }
+
+export interface TopicPage {
+  topicPageId: number;
+  topicId: number;
+  pageNumber: number;
+  textContent: string;
+  wordCount: number;
+}
+
 
 export interface ProgressOverview {
   progressId: number;
@@ -258,6 +268,22 @@ export const api = {
     const suffix = qs.toString();
     return request<TopicSummary[]>(`/topics${suffix ? '?' + suffix : ''}`);
   },
+
+
+  // PDF: build URL for react-pdf. We can't put the JWT in <Document file=...>
+  // easily, so we expose both: a URL builder, and a fetcher that returns a Blob.
+  getTopicPdfBlobUrl: async (topicId: number): Promise<string> => {
+    const token = tokenStore.getAccess();
+    const res = await fetch(`${API_BASE_URL}/topics/${topicId}/pdf`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new APIError(`PDF fetch failed (${res.status})`, res.status);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+
+  getTopicPage: (topicId: number, pageNumber: number) =>
+    request<TopicPage>(`/topics/${topicId}/pages/${pageNumber}`),
 
   getTopic: (topicId: number) =>
     request<TopicDetail>(`/topics/${topicId}`),

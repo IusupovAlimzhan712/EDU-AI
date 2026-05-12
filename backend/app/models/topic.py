@@ -1,7 +1,9 @@
 """
 Topic entity - Table 4.34 in FYP1 report.
 
-References Chapter via (form_level, chapter_id) composite FK.
+Changed in Step 2:
+  - Dropped `content TEXT` column (replaced by PDF + topic_page rows).
+  - Added `pdf_path` and `total_pages` to support the PDF viewer.
 """
 from ..extensions import db
 
@@ -13,16 +15,14 @@ class Topic(db.Model):
     form_level = db.Column('formLevel', db.Integer, nullable=False)
     chapter_id = db.Column('chapterId', db.Integer, nullable=False)
     topic_name = db.Column('topicName', db.String(255), nullable=False)
-    content = db.Column(db.Text, nullable=False)
 
-    # Optional metadata used by the frontend topic cards (duration label,
-    # PDF reference for the embedded viewer). Not in the data dictionary
-    # but harmless to include; if you prefer to be strict, remove and
-    # update the seed file.
+    # PDF file location (relative to backend/static/pdfs/) and cached page count
+    pdf_path = db.Column('pdfPath', db.String(500), nullable=True)
+    total_pages = db.Column('totalPages', db.Integer, nullable=True, default=0)
+
     estimated_duration_minutes = db.Column(
         'estimatedDurationMinutes', db.Integer, nullable=True
     )
-    pdf_reference = db.Column('pdfReference', db.String(500), nullable=True)
 
     __table_args__ = (
         db.UniqueConstraint(
@@ -44,6 +44,12 @@ class Topic(db.Model):
         foreign_keys='[Topic.form_level, Topic.chapter_id]',
         viewonly=True,
     )
+    pages = db.relationship(
+        'TopicPage',
+        back_populates='topic',
+        cascade='all, delete-orphan',
+        order_by='TopicPage.page_number',
+    )
     completions = db.relationship(
         'CompletedTopic', back_populates='topic', cascade='all, delete-orphan'
     )
@@ -52,7 +58,7 @@ class Topic(db.Model):
     )
 
     def to_summary_dict(self) -> dict:
-        """Lightweight view for list endpoints (no full content)."""
+        """Lightweight view for list endpoints."""
         return {
             'topicId': self.topic_id,
             'formLevel': self.form_level,
@@ -60,13 +66,14 @@ class Topic(db.Model):
             'topicName': self.topic_name,
             'chapterName': self.chapter.chapter_name if self.chapter else None,
             'estimatedDurationMinutes': self.estimated_duration_minutes,
+            'hasPdf': bool(self.pdf_path),
+            'totalPages': self.total_pages or 0,
         }
 
     def to_dict(self) -> dict:
-        """Full detail view including content."""
+        """Full detail view."""
         d = self.to_summary_dict()
-        d['content'] = self.content
-        d['pdfReference'] = self.pdf_reference
+        d['pdfPath'] = self.pdf_path
         return d
 
     def __repr__(self) -> str:

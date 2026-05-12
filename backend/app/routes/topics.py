@@ -9,10 +9,13 @@ Topic & Chapter routes.
   DELETE /api/topics/<id>/bookmark           -> unbookmark
   POST   /api/topics/<id>/complete           -> mark complete
   DELETE /api/topics/<id>/complete           -> unmark complete
+  GET    /api/topics/<id>/pdf                -> stream PDF (Step 2)
+  GET    /api/topics/<id>/pages/<n>          -> page text (Step 2, for Phase 3 AI)
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 
 from ..services import TopicService
+from ..utils.errors import BadRequestError
 from ._decorators import auth_required, current_student_id
 
 topics_bp = Blueprint('topics', __name__)
@@ -21,14 +24,12 @@ topics_bp = Blueprint('topics', __name__)
 # ---------- Helpers ----------
 
 def _int_arg(name):
-    """Parse a query-string int or return None."""
     raw = request.args.get(name)
     if raw is None or raw == '':
         return None
     try:
         return int(raw)
     except ValueError:
-        from ..utils.errors import BadRequestError
         raise BadRequestError(f'Query parameter `{name}` must be an integer.')
 
 
@@ -96,3 +97,21 @@ def mark_complete(topic_id):
 def unmark_complete(topic_id):
     TopicService.unmark_completed(current_student_id(), topic_id)
     return jsonify({'message': 'Topic completion removed.'}), 200
+
+
+# ---------- PDF & per-page text (Step 2) ----------
+
+@topics_bp.get('/topics/<int:topic_id>/pdf')
+@auth_required
+def get_topic_pdf(topic_id):
+    """Stream the topic's PDF file. Auth-protected."""
+    abs_path = TopicService.get_pdf_absolute_path(topic_id)
+    return send_file(abs_path, mimetype='application/pdf', as_attachment=False)
+
+
+@topics_bp.get('/topics/<int:topic_id>/pages/<int:page_number>')
+@auth_required
+def get_topic_page(topic_id, page_number):
+    """Return the extracted text for one page. Used by Phase 3 AI tutor."""
+    data = TopicService.get_page_text(topic_id, page_number)
+    return jsonify(data), 200
