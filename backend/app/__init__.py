@@ -57,7 +57,11 @@ def create_app(config_class=None):
     from .routes.account import account_bp
     from .routes.topics import topics_bp
     from .routes.progress import progress_bp
+    from .routes.quizzes import quizzes_bp
+    from .routes.tutor import tutor_bp
 
+    app.register_blueprint(tutor_bp, url_prefix='/api')
+    app.register_blueprint(quizzes_bp, url_prefix='/api')
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(account_bp, url_prefix='/api/me')

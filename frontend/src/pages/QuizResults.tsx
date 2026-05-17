@@ -1,239 +1,214 @@
-import { AppSidebar } from '../components/AppSidebar';
-import { CircularProgress } from '../components/CircularProgress';
+import { useEffect, useState } from 'react';
+import {
+  Trophy, CheckCircle2, XCircle, RotateCw, Home, ChevronDown, ChevronUp,
+} from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { Check, X, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
-import { useState } from 'react';
+import { Progress } from '../components/ui/progress';
+import { api, QuizAttempt, APIError } from '../lib/api';
 
 interface QuizResultsProps {
   onNavigate: (page: any, params?: any) => void;
   quizId: string | null;
+  attemptId?: string | null;
 }
 
-const results = {
-  score: 8,
-  total: 10,
-  percentage: 80,
-  timeTaken: '8:45',
-  correctAnswers: 8,
-  incorrectAnswers: 2,
-};
+export function QuizResults({ onNavigate, quizId, attemptId }: QuizResultsProps) {
+  const [attempt, setAttempt] = useState<QuizAttempt | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
-const questions = [
-  {
-    id: 1,
-    question: 'Apakah nama penuh Raja pertama Kesultanan Melayu Melaka?',
-    userAnswer: 'Parameswara',
-    correctAnswer: 'Parameswara',
-    isCorrect: true,
-    explanation: 'Parameswara adalah pengasas Kesultanan Melayu Melaka pada tahun 1400.',
-  },
-  {
-    id: 2,
-    question: 'Pada tahun berapakah Melaka jatuh ke tangan Portugis?',
-    userAnswer: '1400',
-    correctAnswer: '1511',
-    isCorrect: false,
-    explanation: 'Melaka jatuh ke tangan Portugis pada tahun 1511 selepas Alfonso de Albuquerque menyerang kota tersebut.',
-  },
-  {
-    id: 3,
-    question: 'Apakah sistem pentadbiran tertinggi di Kesultanan Melayu Melaka?',
-    userAnswer: 'Sultan',
-    correctAnswer: 'Sultan',
-    isCorrect: true,
-    explanation: 'Sultan adalah pemerintah tertinggi dalam sistem pentadbiran Kesultanan Melayu Melaka.',
-  },
-];
+  useEffect(() => {
+    if (!attemptId) return;
+    let cancelled = false;
+    setIsLoading(true);
+    api
+      .getAttempt(parseInt(attemptId, 10))
+      .then((a) => !cancelled && setAttempt(a))
+      .catch((err) =>
+        !cancelled && setError(err instanceof APIError ? err.message : 'Failed to load results.')
+      )
+      .finally(() => !cancelled && setIsLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [attemptId]);
 
-export function QuizResults({ onNavigate, quizId }: QuizResultsProps) {
-  const [expandedQuestions, setExpandedQuestions] = useState<Set<number>>(new Set());
-  const [showOnlyIncorrect, setShowOnlyIncorrect] = useState(false);
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#F9FAFB] flex items-center justify-center">
+        <p className="text-[#6B7280]">Loading results…</p>
+      </div>
+    );
+  }
 
-  const toggleQuestion = (id: number) => {
-    const newExpanded = new Set(expandedQuestions);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
-    }
-    setExpandedQuestions(newExpanded);
-  };
+  if (error || !attempt) {
+    return (
+      <div className="min-h-screen bg-[#F9FAFB] flex items-center justify-center p-8">
+        <div className="bg-white rounded-xl shadow-edu-sm p-8 max-w-md text-center">
+          <p className="font-bold text-[#111827] mb-2">
+            {error ?? 'Attempt not found.'}
+          </p>
+          <Button onClick={() => onNavigate('quiz-selection')}>Back to Quizzes</Button>
+        </div>
+      </div>
+    );
+  }
 
-  const filteredQuestions = showOnlyIncorrect
-    ? questions.filter((q) => !q.isCorrect)
-    : questions;
+  const pct = attempt.percentage ?? 0;
+  const verdict =
+    pct >= 80 ? { label: 'Excellent!', color: '#059669', bg: '#D1FAE5' }
+    : pct >= 60 ? { label: 'Good effort', color: '#1E3A8A', bg: '#DBEAFE' }
+    : pct >= 40 ? { label: 'Keep practising', color: '#F59E0B', bg: '#FEF3C7' }
+    : { label: 'Review and try again', color: '#DC2626', bg: '#FEE2E2' };
 
-  const performanceMessage =
-    results.percentage >= 90
-      ? 'Excellent! 🎉'
-      : results.percentage >= 70
-      ? 'Good job! 👍'
-      : results.percentage >= 50
-      ? 'Keep practicing! 💪'
-      : "Don't give up! 📚";
+  const questions = attempt.questions ?? [];
 
   return (
-    <div className="flex h-screen bg-[#F9FAFB]">
-      <AppSidebar currentPage="quiz-selection" onNavigate={onNavigate} />
+    <div className="min-h-screen bg-[#F9FAFB]">
+      {/* Header */}
+      <div className="bg-white border-b border-[#E5E7EB] px-8 py-6">
+        <h1 className="text-2xl font-bold text-[#111827]">
+          {attempt.quiz?.title ?? 'Quiz Results'}
+        </h1>
+        <p className="text-[#6B7280]">
+          Submitted {attempt.submittedAt ? new Date(attempt.submittedAt).toLocaleString() : ''}
+        </p>
+      </div>
 
-      <div className="flex-1 overflow-auto">
-        {/* Header */}
-        <div className="bg-white border-b border-[#E5E7EB] px-8 py-6">
-          <h1 className="text-2xl font-bold text-[#111827]">Quiz Results</h1>
-          <p className="text-[#6B7280]">Kesultanan Melayu Melaka</p>
-        </div>
-
-        {/* Main Content */}
-        <div className="p-8 max-w-4xl mx-auto">
-          {/* Results Header Card */}
-          <div className="bg-white rounded-xl shadow-edu-md p-8 mb-8 text-center">
-            <CircularProgress percentage={results.percentage} size="large" />
-
-            <h2 className="text-3xl font-bold text-[#111827] mt-6 mb-2">
-              {results.score}/{results.total}
-            </h2>
-            <p className="text-xl text-[#6B7280] mb-4">{results.percentage}%</p>
-            <p className="text-2xl font-bold text-[#1E3A8A] mb-4">{performanceMessage}</p>
-            <p className="text-sm text-[#6B7280]">
-              Completed in {results.timeTaken} • {new Date().toLocaleDateString()}
-            </p>
-          </div>
-
-          {/* Score Breakdown */}
-          <div className="bg-white rounded-xl shadow-edu-sm p-6 mb-8">
-            <h3 className="font-bold text-[#111827] mb-4">Score Breakdown</h3>
-            <div className="space-y-3">
-              <div>
-                <div className="flex justify-between text-sm mb-1.5">
-                  <span className="text-[#6B7280]">Correct Answers</span>
-                  <span className="font-medium text-[#059669]">{results.correctAnswers}</span>
-                </div>
-                <div className="h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#059669] rounded-full"
-                    style={{ width: `${(results.correctAnswers / results.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-1.5">
-                  <span className="text-[#6B7280]">Incorrect Answers</span>
-                  <span className="font-medium text-[#DC2626]">{results.incorrectAnswers}</span>
-                </div>
-                <div className="h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#DC2626] rounded-full"
-                    style={{ width: `${(results.incorrectAnswers / results.total) * 100}%` }}
-                  />
-                </div>
-              </div>
+      <div className="p-8 max-w-4xl mx-auto">
+        {/* Score panel */}
+        <div className="bg-white rounded-xl shadow-edu-sm p-8 mb-6">
+          <div className="flex flex-col md:flex-row items-center gap-8">
+            <div
+              className="w-32 h-32 rounded-full flex flex-col items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: verdict.bg }}
+            >
+              <Trophy className="w-8 h-8 mb-1" style={{ color: verdict.color }} />
+              <span className="text-2xl font-bold" style={{ color: verdict.color }}>
+                {pct}%
+              </span>
+            </div>
+            <div className="flex-1 text-center md:text-left">
+              <p className="text-xl font-bold mb-1" style={{ color: verdict.color }}>
+                {verdict.label}
+              </p>
+              <p className="text-[#111827] text-lg mb-1">
+                You scored <span className="font-bold">{attempt.score}</span> out of{' '}
+                <span className="font-bold">{attempt.maxScore}</span>
+              </p>
+              <p className="text-sm text-[#6B7280]">
+                {attempt.correctCount} of {attempt.totalQuestions} correct
+              </p>
+              <Progress value={pct} className="mt-4 h-2" />
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-4 mb-8">
+          <div className="flex gap-3 mt-6 flex-wrap">
             <Button
-              onClick={() => setShowOnlyIncorrect(!showOnlyIncorrect)}
-              variant="outline"
-              className="flex-1"
+              onClick={() =>
+                onNavigate('quiz-in-progress', { quizId, attemptId: null })
+              }
+              className="bg-[#1E3A8A] hover:bg-[#1E40AF] text-white"
             >
-              {showOnlyIncorrect ? 'Show All' : 'Show Incorrect Only'}
+              <RotateCw className="w-4 h-4 mr-2" />
+              Try again
             </Button>
-            <Button
-              onClick={() => onNavigate('quiz-in-progress', { quizId })}
-              variant="outline"
-              className="flex-1"
-            >
-              Retry Quiz
+            <Button variant="outline" onClick={() => onNavigate('quiz-selection')}>
+              All quizzes
             </Button>
-            <Button
-              onClick={() => onNavigate('quiz-selection')}
-              className="flex-1 bg-[#1E3A8A] hover:bg-[#1E40AF] text-white"
-            >
-              Back to Quizzes
+            <Button variant="outline" onClick={() => onNavigate('dashboard')}>
+              <Home className="w-4 h-4 mr-2" />
+              Dashboard
             </Button>
           </div>
+        </div>
 
-          {/* Review Answers */}
-          <div className="bg-white rounded-xl shadow-edu-sm p-6">
-            <h3 className="font-bold text-[#111827] mb-4">Review Answers</h3>
-
-            <div className="space-y-4">
-              {filteredQuestions.map((q) => (
-                <div
-                  key={q.id}
-                  className={`border-2 rounded-lg overflow-hidden ${
-                    q.isCorrect ? 'border-[#D1FAE5]' : 'border-[#FEE2E2]'
-                  }`}
+        {/* Per-question review */}
+        <h2 className="text-lg font-bold text-[#111827] mb-4">Question Review</h2>
+        <div className="space-y-3">
+          {questions.map((q, i) => {
+            const isCorrect = q.isCorrect === true;
+            const isUnanswered = q.selectedIndex === null;
+            const expanded = expandedId === q.attemptQuestionId;
+            return (
+              <div
+                key={q.attemptQuestionId}
+                className="bg-white rounded-xl shadow-edu-sm overflow-hidden"
+              >
+                <button
+                  onClick={() => setExpandedId(expanded ? null : q.attemptQuestionId)}
+                  className="w-full p-5 flex items-start gap-4 text-left hover:bg-[#F9FAFB]"
                 >
-                  <div
-                    className={`p-4 ${q.isCorrect ? 'bg-[#D1FAE5]/30' : 'bg-[#FEE2E2]/30'}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          q.isCorrect ? 'bg-[#059669]' : 'bg-[#DC2626]'
-                        }`}
-                      >
-                        {q.isCorrect ? (
-                          <Check className="w-5 h-5 text-white" />
-                        ) : (
-                          <X className="w-5 h-5 text-white" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium text-[#111827] mb-3">{q.question}</p>
-                        <div className="space-y-2 text-sm">
-                          <div>
-                            <span className="text-[#6B7280]">Your answer: </span>
-                            <span
-                              className={`font-medium ${
-                                q.isCorrect ? 'text-[#059669]' : 'text-[#DC2626]'
-                              }`}
-                            >
-                              {q.userAnswer}
+                  <div className="flex-shrink-0 mt-0.5">
+                    {isUnanswered ? (
+                      <XCircle className="w-6 h-6 text-[#9CA3AF]" />
+                    ) : isCorrect ? (
+                      <CheckCircle2 className="w-6 h-6 text-[#059669]" />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-[#DC2626]" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-[#6B7280] mb-1">Question {i + 1}</p>
+                    <p className="font-medium text-[#111827] line-clamp-2">{q.stem}</p>
+                    {isUnanswered && (
+                      <p className="text-xs text-[#9CA3AF] mt-1 italic">Not answered</p>
+                    )}
+                  </div>
+                  {expanded ? (
+                    <ChevronUp className="w-5 h-5 text-[#6B7280] flex-shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-[#6B7280] flex-shrink-0" />
+                  )}
+                </button>
+
+                {expanded && (
+                  <div className="px-5 pb-5 pt-0 border-t border-[#F3F4F6]">
+                    <div className="space-y-2 mt-4">
+                      {q.options.map((opt, idx) => {
+                        const isSelected = q.selectedIndex === idx;
+                        const isAnswer = q.correctIndex === idx;
+                        let cls = 'border-[#E5E7EB] bg-white';
+                        if (isAnswer) cls = 'border-[#059669] bg-[#D1FAE5]';
+                        else if (isSelected) cls = 'border-[#DC2626] bg-[#FEE2E2]';
+                        return (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-lg border-2 flex items-center gap-3 ${cls}`}
+                          >
+                            <span className="font-bold text-sm w-6">
+                              {String.fromCharCode(65 + idx)}
                             </span>
-                          </div>
-                          {!q.isCorrect && (
-                            <div>
-                              <span className="text-[#6B7280]">Correct answer: </span>
-                              <span className="font-medium text-[#059669]">
-                                {q.correctAnswer}
+                            <span className="flex-1 text-sm text-[#111827]">{opt}</span>
+                            {isAnswer && (
+                              <span className="text-xs font-semibold text-[#059669]">
+                                Correct
                               </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => toggleQuestion(q.id)}
-                        className="p-2 hover:bg-white/50 rounded transition-default"
-                      >
-                        {expandedQuestions.has(q.id) ? (
-                          <ChevronUp className="w-5 h-5 text-[#6B7280]" />
-                        ) : (
-                          <ChevronDown className="w-5 h-5 text-[#6B7280]" />
-                        )}
-                      </button>
+                            )}
+                            {isSelected && !isAnswer && (
+                              <span className="text-xs font-semibold text-[#DC2626]">
+                                Your answer
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
 
-                    {expandedQuestions.has(q.id) && (
-                      <div className="mt-4 pt-4 border-t border-white/50">
-                        <p className="text-sm text-[#374151] mb-3">{q.explanation}</p>
-                        <Button
-                          onClick={() => onNavigate('ai-tutor')}
-                          variant="outline"
-                          size="sm"
-                        >
-                          <MessageSquare className="w-4 h-4 mr-2" />
-                          Ask AI Tutor
-                        </Button>
+                    {q.explanation && (
+                      <div className="mt-4 p-3 rounded-lg bg-[#EFF6FF] border border-[#1E3A8A]/20">
+                        <p className="text-xs font-semibold text-[#1E3A8A] mb-1">
+                          Explanation
+                        </p>
+                        <p className="text-sm text-[#111827]">{q.explanation}</p>
                       </div>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

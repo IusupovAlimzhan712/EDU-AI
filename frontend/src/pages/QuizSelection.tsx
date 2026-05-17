@@ -1,173 +1,208 @@
+import { useEffect, useState } from 'react';
+import {
+  ClipboardList, Clock, Play, RotateCw, Trophy, Sparkles,
+} from 'lucide-react';
 import { AppSidebar } from '../components/AppSidebar';
 import { Button } from '../components/ui/button';
-import { DifficultyBadge } from '../components/DifficultyBadge';
-import { FormLevelBadge } from '../components/FormLevelBadge';
-import { StatusBadge } from '../components/StatusBadge';
-import { PlayCircle, Clock, HelpCircle, Plus } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { useAuth } from '../context/AuthContext';
+import { api, QuizSummary, APIError } from '../lib/api';
 
 interface QuizSelectionProps {
   onNavigate: (page: any, params?: any) => void;
 }
 
-const quizzes = [
-  {
-    id: '1',
-    title: 'Tamadun Awal Manusia',
-    chapter: 'Bab 1',
-    form: 4,
-    difficulty: 'easy' as const,
-    questions: 10,
-    duration: '10 min',
-    bestScore: '8/10',
-    attempts: 2,
-    status: 'completed' as const,
-  },
-  {
-    id: '2',
-    title: 'Kerajaan Islam di Madinah',
-    chapter: 'Bab 5',
-    form: 4,
-    difficulty: 'medium' as const,
-    questions: 15,
-    duration: '15 min',
-    bestScore: '10/15',
-    attempts: 1,
-    status: 'in-progress' as const,
-  },
-  {
-    id: '3',
-    title: 'Pendudukan Jepun',
-    chapter: 'Bab 1',
-    form: 5,
-    difficulty: 'hard' as const,
-    questions: 20,
-    duration: '20 min',
-    bestScore: null,
-    attempts: 0,
-    status: 'not-started' as const,
-  },
-  {
-    id: '4',
-    title: 'Kemerdekaan Tanah Melayu',
-    chapter: 'Bab 3',
-    form: 5,
-    difficulty: 'medium' as const,
-    questions: 12,
-    duration: '12 min',
-    bestScore: '9/12',
-    attempts: 3,
-    status: 'completed' as const,
-  },
-];
-
 export function QuizSelection({ onNavigate }: QuizSelectionProps) {
+  const { student } = useAuth();
+  const [selectedForm, setSelectedForm] = useState<'4' | '5'>(
+    student?.formLevel === 5 ? '5' : '4'
+  );
+  const [quizzes, setQuizzes] = useState<QuizSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [startingId, setStartingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+    api
+      .listQuizzes(parseInt(selectedForm, 10))
+      .then((list) => {
+        if (!cancelled) setQuizzes(list);
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(err instanceof APIError ? err.message : 'Failed to load quizzes.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedForm]);
+
+  const megaQuiz = quizzes.find((q) => q.scope === 'form');
+  const babQuizzes = quizzes
+    .filter((q) => q.scope === 'bab')
+    .sort((a, b) => (a.chapterId ?? 0) - (b.chapterId ?? 0));
+
+  const handleStartOrResume = async (quiz: QuizSummary) => {
+    setStartingId(quiz.quizId);
+    try {
+      const attempt = await api.startAttempt(quiz.quizId);
+      // Whether resumed or fresh — both end up at the quiz runner.
+      // The runner itself decides whether to stream questions or display
+      // what was already generated.
+      onNavigate('quiz-in-progress', {
+        quizId: String(quiz.quizId),
+        attemptId: String(attempt.attemptId),
+      });
+    } catch (err) {
+      setError(err instanceof APIError ? err.message : 'Failed to start quiz.');
+    } finally {
+      setStartingId(null);
+    }
+  };
+
+  // ---------- Card ----------
+  const QuizCard = ({ quiz, isMega }: { quiz: QuizSummary; isMega?: boolean }) => {
+    const inProgress = quiz.hasInProgressAttempt;
+    const completed = (quiz.attemptCount ?? 0) > 0;
+    const isStarting = startingId === quiz.quizId;
+
+    return (
+      <div
+        className={`bg-white rounded-xl shadow-edu-sm p-5 ${
+          isMega ? 'border-2 border-[#7C3AED]/30' : ''
+        }`}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              {isMega && (
+                <span className="px-2 py-0.5 text-xs font-bold text-[#7C3AED] bg-[#EDE9FE] rounded">
+                  MEGA
+                </span>
+              )}
+              <span className="px-2 py-0.5 text-xs text-[#1E3A8A] bg-[#DBEAFE] rounded flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> AI-generated
+              </span>
+              {inProgress && (
+                <span className="px-2 py-0.5 text-xs text-[#F59E0B] bg-[#FEF3C7] rounded flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Resume
+                </span>
+              )}
+            </div>
+            <h3 className="font-bold text-[#111827] leading-tight">{quiz.title}</h3>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 text-sm text-[#6B7280] mb-4 flex-wrap">
+          <span className="flex items-center gap-1">
+            <ClipboardList className="w-4 h-4" />
+            {quiz.defaultQuestionCount} questions per attempt
+          </span>
+          {completed && (
+            <span className="text-[#059669]">
+              {quiz.attemptCount} {quiz.attemptCount === 1 ? 'attempt' : 'attempts'}
+            </span>
+          )}
+          {quiz.bestPercentage !== null && (
+            <span className="flex items-center gap-1 text-[#F59E0B]">
+              <Trophy className="w-4 h-4" />
+              Best: {quiz.bestPercentage}%
+            </span>
+          )}
+        </div>
+
+        <Button
+          onClick={() => handleStartOrResume(quiz)}
+          disabled={isStarting}
+          className={`w-full ${
+            isMega
+              ? 'bg-[#7C3AED] hover:bg-[#6D28D9]'
+              : 'bg-[#1E3A8A] hover:bg-[#1E40AF]'
+          } text-white`}
+        >
+          {isStarting ? (
+            'Starting…'
+          ) : inProgress ? (
+            <>
+              <RotateCw className="w-4 h-4 mr-2" />
+              Resume Quiz
+            </>
+          ) : completed ? (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Generate New Quiz
+            </>
+          ) : (
+            <>
+              <Play className="w-4 h-4 mr-2" />
+              Generate Quiz
+            </>
+          )}
+        </Button>
+
+        {!inProgress && !completed && (
+          <p className="text-xs text-[#6B7280] mt-2 text-center">
+            Questions generated fresh by AI from the KSSM textbook.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-screen bg-[#F9FAFB]">
       <AppSidebar currentPage="quiz-selection" onNavigate={onNavigate} />
 
       <div className="flex-1 overflow-auto">
-        {/* Header */}
         <div className="bg-white border-b border-[#E5E7EB] px-8 py-6">
           <h1 className="text-2xl font-bold text-[#111827] mb-1">Quizzes</h1>
-          <p className="text-[#6B7280]">You've completed 4 quizzes this week</p>
+          <p className="text-[#6B7280]">
+            Each click generates a fresh set of MCQ questions from the KSSM Sejarah
+            textbook. Take it as many times as you like — every attempt is unique.
+          </p>
         </div>
 
-        {/* Main Content */}
-        <div className="p-8 max-w-7xl">
-          {/* Create Custom Quiz Card */}
-          <div className="bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] rounded-xl p-8 mb-8 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold mb-2">Create Custom Quiz</h2>
-                <p className="text-blue-100 mb-4">
-                  Select specific topics to test yourself
-                </p>
+        <div className="p-8 max-w-6xl">
+          <Tabs value={selectedForm} onValueChange={(v) => setSelectedForm(v as '4' | '5')}>
+            <TabsList className="mb-6">
+              <TabsTrigger value="4">Form 4</TabsTrigger>
+              <TabsTrigger value="5">Form 5</TabsTrigger>
+            </TabsList>
+
+            {isLoading ? (
+              <div className="text-center py-16 text-[#6B7280]">Loading quizzes…</div>
+            ) : error ? (
+              <div className="p-6 rounded-lg bg-[#FEE2E2] border border-[#DC2626]/20 text-[#991B1B]">
+                {error}
               </div>
-              <Button className="bg-white text-[#1E3A8A] hover:bg-blue-50">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Quiz
-              </Button>
-            </div>
-          </div>
-
-          {/* Quiz Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {quizzes.map((quiz) => (
-              <div
-                key={quiz.id}
-                className="bg-white rounded-xl shadow-edu-sm hover:shadow-edu-md transition-default overflow-hidden"
-              >
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div
-                      className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                        quiz.difficulty === 'easy'
-                          ? 'bg-[#D1FAE5]'
-                          : quiz.difficulty === 'medium'
-                          ? 'bg-[#FEF3C7]'
-                          : 'bg-[#FEE2E2]'
-                      }`}
-                    >
-                      <HelpCircle
-                        className={`w-6 h-6 ${
-                          quiz.difficulty === 'easy'
-                            ? 'text-[#059669]'
-                            : quiz.difficulty === 'medium'
-                            ? 'text-[#D97706]'
-                            : 'text-[#DC2626]'
-                        }`}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <FormLevelBadge form={quiz.form as 4 | 5} />
-                    </div>
+            ) : (
+              <>
+                {megaQuiz && (
+                  <div className="mb-8">
+                    <h2 className="text-sm font-semibold text-[#6B7280] uppercase tracking-wide mb-3">
+                      Full-Form Mega Quiz
+                    </h2>
+                    <QuizCard quiz={megaQuiz} isMega />
                   </div>
+                )}
 
-                  <h3 className="font-bold text-[#111827] mb-2">{quiz.title}</h3>
-                  <p className="text-sm text-[#6B7280] mb-4">{quiz.chapter}</p>
-
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-[#6B7280]">Questions:</span>
-                      <span className="font-medium text-[#111827]">{quiz.questions}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-[#6B7280]">Duration:</span>
-                      <span className="font-medium text-[#111827] flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {quiz.duration}
-                      </span>
-                    </div>
-                    {quiz.bestScore && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-[#6B7280]">Best Score:</span>
-                        <span className="font-medium text-[#059669]">{quiz.bestScore}</span>
-                      </div>
-                    )}
-                    {quiz.attempts > 0 && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-[#6B7280]">Attempts:</span>
-                        <span className="font-medium text-[#111827]">{quiz.attempts}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between mb-4">
-                    <DifficultyBadge difficulty={quiz.difficulty} />
-                    <StatusBadge status={quiz.status} />
-                  </div>
-
-                  <Button
-                    onClick={() => onNavigate('quiz-in-progress', { quizId: quiz.id })}
-                    className="w-full bg-[#1E3A8A] hover:bg-[#1E40AF] text-white"
-                  >
-                    <PlayCircle className="w-4 h-4 mr-2" />
-                    {quiz.attempts > 0 ? 'Retry Quiz' : 'Start Quiz'}
-                  </Button>
+                <h2 className="text-sm font-semibold text-[#6B7280] uppercase tracking-wide mb-3">
+                  Per Chapter
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {babQuizzes.map((q) => (
+                    <QuizCard key={q.quizId} quiz={q} />
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              </>
+            )}
+          </Tabs>
         </div>
       </div>
     </div>

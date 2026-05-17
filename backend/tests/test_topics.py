@@ -15,12 +15,9 @@ def seeded_app(app):
         ])
         db.session.commit()
         db.session.add_all([
-            Topic(form_level=4, chapter_id=1, topic_name='Zaman Prasejarah',
-                  content='Lorem ipsum'),
-            Topic(form_level=4, chapter_id=1, topic_name='Zaman Neolitik',
-                  content='Lorem ipsum'),
-            Topic(form_level=5, chapter_id=1, topic_name='Konsep Negara',
-                  content='Lorem ipsum'),
+            Topic(form_level=4, chapter_id=1, topic_name='Zaman Prasejarah'),
+            Topic(form_level=4, chapter_id=1, topic_name='Zaman Neolitik'),
+            Topic(form_level=5, chapter_id=1, topic_name='Konsep Negara'),
         ])
         db.session.commit()
     return app
@@ -101,4 +98,4 @@ def test_topic_detail_includes_status(seeded_app, client):
     assert r.status_code == 200
     body = r.get_json()
     assert body['isBookmarked'] is True
-    assert 'content' in body
+    assert 'hasPdf' in body

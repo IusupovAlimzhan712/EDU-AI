@@ -22,7 +22,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ currentPage, onNavigate, onLogout }: AppSidebarProps) {
-  const { student } = useAuth();
+  const { student, logout } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -131,9 +131,17 @@ export function AppSidebar({ currentPage, onNavigate, onLogout }: AppSidebarProp
                 <span className="text-sm text-[#374151]">Settings</span>
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setShowUserMenu(false);
-                  onLogout?.();
+                  // Prefer the parent-supplied handler (used by Settings -> App-level
+                  // routing back to the Login page); fall back to direct auth context
+                  // logout for every other page where onLogout wasn't wired up.
+                  if (onLogout) {
+                    onLogout();
+                  } else {
+                    await logout();
+                    onNavigate('login');
+                  }
                 }}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FEE2E2] transition-default text-left border-t border-[#E5E7EB]"
               >

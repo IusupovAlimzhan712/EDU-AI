@@ -15,6 +15,7 @@ load_dotenv(os.path.join(basedir, '.env'))
 
 
 class Config:
+
     """Base configuration - shared by all environments."""
 
     # --- Security ---
@@ -67,6 +68,11 @@ class Config:
 
     # --- Frontend URL ---
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+
+    # --- Ollama (AI) ---
+    OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
+    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'aya:8b')
+    OLLAMA_TIMEOUT_SECONDS = int(os.environ.get('OLLAMA_TIMEOUT_SECONDS', 180))
 
     # --- Bcrypt ---
     BCRYPT_LOG_ROUNDS = 12

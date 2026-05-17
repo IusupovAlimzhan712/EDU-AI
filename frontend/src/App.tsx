@@ -40,6 +40,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('login');
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [selectedEssayId, setSelectedEssayId] = useState<string | null>(null);
 
   // Once auth state is restored, jump straight to dashboard if logged in.
@@ -51,11 +52,12 @@ export default function App() {
 
   const navigate = (
     page: Page,
-    params?: { topicId?: string; quizId?: string; essayId?: string }
+    params?: { topicId?: string; quizId?: string; essayId?: string; attemptId?: string | null }
   ) => {
     if (params?.topicId) setSelectedTopicId(params.topicId);
     if (params?.quizId) setSelectedQuizId(params.quizId);
     if (params?.essayId) setSelectedEssayId(params.essayId);
+    if (params?.attemptId !== undefined) setSelectedAttemptId(params.attemptId);
     setCurrentPage(page);
   };
 
@@ -93,9 +95,9 @@ export default function App() {
       case 'quiz-selection':
         return <QuizSelection onNavigate={navigate} />;
       case 'quiz-in-progress':
-        return <QuizInProgress onNavigate={navigate} quizId={selectedQuizId} />;
+        return <QuizInProgress onNavigate={navigate} quizId={selectedQuizId} attemptId={selectedAttemptId} />;
       case 'quiz-results':
-        return <QuizResults onNavigate={navigate} quizId={selectedQuizId} />;
+        return <QuizResults onNavigate={navigate} quizId={selectedQuizId} attemptId={selectedAttemptId} />;
       case 'essay-practice':
         return <EssayPractice onNavigate={navigate} />;
       case 'essay-writing':
