@@ -1,15 +1,84 @@
+import { useState, useEffect, useRef } from 'react';
 import { AppSidebar } from '../components/AppSidebar';
 import { CircularProgress } from '../components/CircularProgress';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
-import { Check, AlertTriangle } from 'lucide-react';
+import { Check, X, AlertTriangle, Loader2, Minus } from 'lucide-react';
+import { api, EssayAttempt, MatchedNode, ArasDescriptorScores } from '../lib/api';
 
 interface EssayFeedbackProps {
   onNavigate: (page: any, params?: any) => void;
-  essayId: string | null;
+  attemptId: string | null;
 }
 
-export function EssayFeedback({ onNavigate, essayId }: EssayFeedbackProps) {
+export function EssayFeedback({ onNavigate, attemptId }: EssayFeedbackProps) {
+  const [attempt, setAttempt] = useState<EssayAttempt | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [gradingMsg, setGradingMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const streamRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!attemptId) { setError('No attempt selected.'); setLoading(false); return; }
+    const aId = parseInt(attemptId, 10);
+
+    api.getEssayAttempt(aId)
+      .then((a) => {
+        setAttempt(a);
+        if (a.gradingStatus !== 'done' && a.gradingStatus !== 'failed') {
+          startStream(aId);
+        }
+      })
+      .catch((err) => setError(err.message ?? 'Failed to load attempt.'))
+      .finally(() => setLoading(false));
+
+    return () => { streamRef.current?.abort(); };
+  }, [attemptId]);
+
+  const startStream = (aId: number) => {
+    setGradingMsg('Sedang menilai jawapan anda…');
+    streamRef.current = api.streamEssayGrading(aId, {
+      onStatus: (info) => setGradingMsg(`Status: ${info.gradingStatus}`),
+      onDone: (finalAttempt) => {
+        setAttempt(finalAttempt);
+        setGradingMsg(null);
+      },
+      onError: (msg) => {
+        setError(msg);
+        setGradingMsg(null);
+      },
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F9FAFB]">
+        <Loader2 className="w-8 h-8 animate-spin text-[#1E3A8A]" />
+      </div>
+    );
+  }
+
+  if (error || !attempt) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F9FAFB]">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">{error ?? 'Attempt not found.'}</p>
+          <Button onClick={() => onNavigate('essay-practice')} variant="outline">
+            Kembali ke Essay Practice
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const question = attempt.question;
+  const isStruktur = question?.questionType === 'struktur';
+  const isGraded = attempt.gradingStatus === 'done';
+  const scorePct =
+    isGraded && attempt.score != null && attempt.maxScore
+      ? Math.round((attempt.score / attempt.maxScore) * 100)
+      : 0;
+
   return (
     <div className="flex h-screen bg-[#F9FAFB]">
       <AppSidebar currentPage="essay-practice" onNavigate={onNavigate} />
@@ -17,192 +86,363 @@ export function EssayFeedback({ onNavigate, essayId }: EssayFeedbackProps) {
       <div className="flex-1 overflow-auto">
         {/* Header */}
         <div className="bg-white border-b border-[#E5E7EB] px-8 py-6">
-          <h1 className="text-2xl font-bold text-[#111827]">Essay Feedback</h1>
-          <p className="text-[#6B7280]">Huraikan faktor-faktor kejatuhan Kesultanan Melayu Melaka</p>
+          <h1 className="text-2xl font-bold text-[#111827]">Maklum Balas Esei</h1>
+          <p className="text-[#6B7280] mt-1 text-sm line-clamp-2">
+            {question?.questionText ?? ''}
+          </p>
         </div>
 
-        {/* Main Content */}
-        <div className="p-8 max-w-5xl mx-auto">
-          {/* Score Header */}
-          <div className="bg-white rounded-xl shadow-edu-md p-8 mb-8">
-            <div className="flex items-center gap-8">
-              <CircularProgress percentage={70} size="large" />
+        <div className="p-8 max-w-5xl mx-auto space-y-8">
+          {/* Grading in progress */}
+          {gradingMsg && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl p-6 flex items-center gap-4">
+              <Loader2 className="w-6 h-6 animate-spin flex-shrink-0" />
+              <div>
+                <p className="font-semibold">Penilaian sedang dijalankan…</p>
+                <p className="text-sm mt-1">{gradingMsg}</p>
+              </div>
+            </div>
+          )}
 
-              <div className="flex-1">
-                <h2 className="text-3xl font-bold text-[#111827] mb-4">7/10</h2>
+          {/* Grading failed */}
+          {attempt.gradingStatus === 'failed' && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-6">
+              Penilaian gagal. Sila cuba hantar semula.
+            </div>
+          )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-[#6B7280] mb-1">Content Accuracy</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
-                        <div className="h-full bg-[#1E3A8A] rounded-full" style={{ width: '80%' }} />
-                      </div>
-                      <span className="text-sm font-bold text-[#111827]">3/4</span>
-                    </div>
+          {/* Score header */}
+          {isGraded && attempt.score != null && (
+            <div className="bg-white rounded-xl shadow-edu-md p-8">
+              <div className="flex items-center gap-8">
+                <CircularProgress percentage={scorePct} size="large" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h2 className="text-3xl font-bold text-[#111827]">
+                      {attempt.score}/{attempt.maxScore}
+                    </h2>
+                    {!isStruktur && attempt.arasLevel && (
+                      <span className="px-3 py-1 bg-[#1E3A8A] text-white rounded-full text-sm font-bold">
+                        Aras {attempt.arasLevel}
+                      </span>
+                    )}
                   </div>
 
-                  <div>
-                    <p className="text-sm text-[#6B7280] mb-1">Structure & Organization</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
-                        <div className="h-full bg-[#1E3A8A] rounded-full" style={{ width: '100%' }} />
-                      </div>
-                      <span className="text-sm font-bold text-[#111827]">2/2</span>
+                  {/* Note-form penalty banner */}
+                  {attempt.isNoteForm && (
+                    <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mt-3 text-sm">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Jawapan dalam bentuk nota/poin</strong> — had markah Aras 2 (maksimum 4 markah)
+                        mengikut skema pemarkahan SPM Sejarah Kertas 2.
+                      </span>
                     </div>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-[#6B7280] mb-1">Analysis & Understanding</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
-                        <div className="h-full bg-[#1E3A8A] rounded-full" style={{ width: '50%' }} />
-                      </div>
-                      <span className="text-sm font-bold text-[#111827]">1.5/3</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-[#6B7280] mb-1">Language & Expression</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
-                        <div className="h-full bg-[#1E3A8A] rounded-full" style={{ width: '50%' }} />
-                      </div>
-                      <span className="text-sm font-bold text-[#111827]">0.5/1</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Tabs */}
-          <Tabs defaultValue="feedback" className="mb-8">
-            <TabsList className="bg-white border border-[#E5E7EB] mb-6">
-              <TabsTrigger value="response">Your Response</TabsTrigger>
-              <TabsTrigger value="feedback">AI Feedback</TabsTrigger>
-              <TabsTrigger value="model">Model Answer</TabsTrigger>
-            </TabsList>
+          {isGraded && (
+            <Tabs defaultValue="feedback">
+              <TabsList className="bg-white border border-[#E5E7EB] mb-6">
+                <TabsTrigger value="response">Jawapan Anda</TabsTrigger>
+                <TabsTrigger value="feedback">Maklum Balas</TabsTrigger>
+                {isStruktur && attempt.matchedNodes && attempt.matchedNodes.length > 0 && (
+                  <TabsTrigger value="codes">Pemarkahan F/H/C</TabsTrigger>
+                )}
+                <TabsTrigger value="model">Jawapan Model</TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="response">
-              <div className="bg-white rounded-xl shadow-edu-sm p-6">
-                <p className="text-[#111827] leading-relaxed whitespace-pre-line">
-                  Kejatuhan Kesultanan Melayu Melaka pada tahun 1511 adalah hasil daripada pelbagai faktor dalaman dan luaran. Faktor pertama ialah persaingan perdagangan dengan kuasa Eropah, terutamanya Portugis yang ingin menguasai perdagangan rempah. Kedua, kelemahan pertahanan Melaka kerana konflik dalaman dalam kerajaan. Ketiga, pengkhianatan oleh beberapa pembesar dan pedagang tempatan yang bekerjasama dengan Portugis. Keempat, kekurangan persediaan ketenteraan Melaka berbanding dengan senjata moden Portugis. Kelima, masalah ekonomi akibat monopoli perdagangan yang semakin terancam.
-                </p>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="feedback">
-              <div className="space-y-6">
-                {/* Strengths */}
+              {/* Tab: Jawapan Anda */}
+              <TabsContent value="response">
                 <div className="bg-white rounded-xl shadow-edu-sm p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-[#D1FAE5] rounded-full flex items-center justify-center">
-                      <Check className="w-5 h-5 text-[#059669]" />
-                    </div>
-                    <h3 className="text-lg font-bold text-[#111827]">Strengths</h3>
-                  </div>
-                  <ul className="space-y-3 text-[#374151]">
-                    <li className="flex gap-3">
-                      <span className="text-[#059669] font-bold">•</span>
-                      <span>Well-structured response with clear introduction and five distinct factors</span>
-                    </li>
-                    <li className="flex gap-3">
-                      <span className="text-[#059669] font-bold">•</span>
-                      <span>Mentioned the year 1511 correctly</span>
-                    </li>
-                    <li className="flex gap-3">
-                      <span className="text-[#059669] font-bold">•</span>
-                      <span>Identified both internal and external factors contributing to the fall</span>
-                    </li>
-                  </ul>
-                </div>
-
-                {/* Areas for Improvement */}
-                <div className="bg-white rounded-xl shadow-edu-sm p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 bg-[#FEF3C7] rounded-full flex items-center justify-center">
-                      <AlertTriangle className="w-5 h-5 text-[#F59E0B]" />
-                    </div>
-                    <h3 className="text-lg font-bold text-[#111827]">Areas for Improvement</h3>
-                  </div>
-                  <ul className="space-y-3 text-[#374151]">
-                    <li className="flex gap-3">
-                      <span className="text-[#F59E0B] font-bold">•</span>
-                      <span>Provide more specific historical details - mention Alfonso de Albuquerque by name</span>
-                    </li>
-                    <li className="flex gap-3">
-                      <span className="text-[#F59E0B] font-bold">•</span>
-                      <span>Elaborate on the role of Sultan Mahmud Shah during this period</span>
-                    </li>
-                    <li className="flex gap-3">
-                      <span className="text-[#F59E0B] font-bold">•</span>
-                      <span>Include the impact of the fall on the regional trade network</span>
-                    </li>
-                  </ul>
-                </div>
-
-                {/* Detailed Feedback */}
-                <div className="bg-white rounded-xl shadow-edu-sm p-6">
-                  <h3 className="text-lg font-bold text-[#111827] mb-4">Detailed Feedback</h3>
-                  <p className="text-[#374151] leading-relaxed">
-                    Your essay demonstrates a good understanding of the factors leading to the fall of Melaka. However, to achieve full marks, you should provide more specific historical evidence. For example, when discussing Portuguese involvement, mention specific leaders like Alfonso de Albuquerque and the date of the attack (August 1511). Additionally, elaborate on how internal conflicts, such as disputes between nobles, weakened the sultanate's ability to defend itself.
+                  <p className="text-[#111827] leading-relaxed whitespace-pre-wrap text-sm">
+                    {attempt.responseText || <span className="text-[#9CA3AF]">(Tiada teks)</span>}
                   </p>
                 </div>
-              </div>
-            </TabsContent>
+              </TabsContent>
 
-            <TabsContent value="model">
-              <div className="bg-white rounded-xl shadow-edu-sm p-6">
-                <div className="bg-[#EFF6FF] border-l-4 border-[#1E3A8A] p-4 rounded mb-4">
-                  <p className="text-sm text-[#1E3A8A] font-medium">
-                    This is a model answer demonstrating full marks criteria
+              {/* Tab: Maklum Balas */}
+              <TabsContent value="feedback">
+                <FeedbackPanel attempt={attempt} isStruktur={isStruktur} />
+              </TabsContent>
+
+              {/* Tab: Pemarkahan F/H/C (struktur only) */}
+              {isStruktur && attempt.matchedNodes && attempt.matchedNodes.length > 0 && (
+                <TabsContent value="codes">
+                  <CodeTreePanel
+                    nodes={attempt.matchedNodes}
+                    score={attempt.score ?? 0}
+                    maxScore={attempt.maxScore ?? 0}
+                  />
+                </TabsContent>
+              )}
+
+              {/* Tab: Jawapan Model */}
+              <TabsContent value="model">
+                <div className="bg-white rounded-xl shadow-edu-sm p-6">
+                  <div className="bg-[#EFF6FF] border-l-4 border-[#1E3A8A] p-3 rounded mb-4 text-sm text-[#1E3A8A] font-medium">
+                    Jawapan model yang memenuhi kriteria markah penuh
+                  </div>
+                  <p className="text-[#111827] leading-relaxed whitespace-pre-wrap text-sm">
+                    {question?.modelAnswer ?? '—'}
                   </p>
                 </div>
-                <p className="text-[#111827] leading-relaxed whitespace-pre-line">
-                  Kejatuhan Kesultanan Melayu Melaka kepada Portugis pada 24 Ogos 1511 merupakan peristiwa penting dalam sejarah Alam Melayu. Beberapa faktor utama menyumbang kepada kejatuhan ini:
+              </TabsContent>
+            </Tabs>
+          )}
 
-                  Pertama, persaingan perdagangan yang sengit dengan kuasa Eropah, khususnya Portugis di bawah pimpinan Alfonso de Albuquerque yang ingin menguasai perdagangan rempah di Nusantara.
-
-                  Kedua, kelemahan pertahanan Melaka akibat konflik dalaman antara pembesar negara, terutamanya perselisihan faham mengenai polisi perdagangan dengan pedagang asing.
-
-                  Ketiga, pengkhianatan oleh beberapa pedagang tempatan dan pembesar yang bekerjasama dengan Portugis atas kepentingan peribadi mereka dalam perdagangan.
-
-                  Keempat, ketidakseimbangan kuasa ketenteraan di mana Portugis memiliki senjata api moden dan meriam yang lebih canggih berbanding senjata tradisional Melaka.
-
-                  Kelima, masalah ekonomi yang melanda Melaka akibat monopoli perdagangan yang semakin terancam oleh laluan perdagangan alternatif yang dikuasai kuasa Eropah.
-
-                  Kejatuhan Melaka memberi kesan besar kepada kedudukan Melaka sebagai pusat perdagangan dan penyebaran Islam di rantau ini.
-                </p>
-              </div>
-            </TabsContent>
-          </Tabs>
-
-          {/* Action Buttons */}
+          {/* Action buttons */}
           <div className="flex gap-4">
-            <Button
-              onClick={() => onNavigate('essay-writing', { essayId })}
-              variant="outline"
-              className="flex-1"
-            >
-              Try Again
-            </Button>
-            <Button
-              onClick={() => onNavigate('essay-practice')}
-              variant="outline"
-              className="flex-1"
-            >
-              Practice Similar Question
-            </Button>
+            {question && (
+              <Button
+                onClick={() => onNavigate('essay-writing', { questionId: String(question.questionId) })}
+                variant="outline"
+                className="flex-1"
+              >
+                Cuba Lagi
+              </Button>
+            )}
             <Button
               onClick={() => onNavigate('essay-practice')}
               className="flex-1 bg-[#1E3A8A] hover:bg-[#1E40AF] text-white"
             >
-              Back to Essay Practice
+              Kembali ke Essay Practice
             </Button>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Feedback panel ────────────────────────────────────────────────────────────
+
+function FeedbackPanel({
+  attempt,
+  isStruktur,
+}: {
+  attempt: EssayAttempt;
+  isStruktur: boolean;
+}) {
+  const fb = attempt.feedbackJson;
+  if (!fb) return <p className="text-[#9CA3AF]">Tiada maklum balas.</p>;
+
+  return (
+    <div className="space-y-6">
+      {/* Strengths */}
+      {fb.strengths && fb.strengths.length > 0 && (
+        <div className="bg-white rounded-xl shadow-edu-sm p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 bg-[#D1FAE5] rounded-full flex items-center justify-center">
+              <Check className="w-5 h-5 text-[#059669]" />
+            </div>
+            <h3 className="text-lg font-bold text-[#111827]">Kekuatan</h3>
+          </div>
+          <ul className="space-y-2">
+            {fb.strengths.map((s, i) => (
+              <li key={i} className="flex gap-3 text-[#374151] text-sm">
+                <span className="text-[#059669] font-bold flex-shrink-0">✓</span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Improvements */}
+      {fb.improvements && fb.improvements.length > 0 && (
+        <div className="bg-white rounded-xl shadow-edu-sm p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 bg-[#FEF3C7] rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-[#F59E0B]" />
+            </div>
+            <h3 className="text-lg font-bold text-[#111827]">Cadangan Penambahbaikan</h3>
+          </div>
+          <ul className="space-y-2">
+            {fb.improvements.map((s, i) => (
+              <li key={i} className="flex gap-3 text-[#374151] text-sm">
+                <span className="text-[#F59E0B] font-bold flex-shrink-0">△</span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Detailed feedback */}
+      {fb.detailedFeedback && (
+        <div className="bg-white rounded-xl shadow-edu-sm p-6">
+          <h3 className="text-lg font-bold text-[#111827] mb-3">Maklum Balas Terperinci</h3>
+          <p className="text-[#374151] leading-relaxed text-sm">{fb.detailedFeedback}</p>
+        </div>
+      )}
+
+      {/* Esei: Aras descriptor table */}
+      {!isStruktur && fb.arasDescriptorScores && (
+        <ArasDescriptorTable
+          scores={fb.arasDescriptorScores}
+          arasLevel={attempt.arasLevel}
+          scoreValue={attempt.score}
+          reasoning={fb.arasReasoning}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Aras descriptor breakdown table (esei only) ───────────────────────────────
+
+const DESCRIPTOR_LABELS: Record<keyof ArasDescriptorScores, string> = {
+  pengetahuan_pemahaman: 'Pengetahuan & Pemahaman',
+  bukti_contoh: 'Bukti / Contoh',
+  membuat_inferens: 'Membuat Inferens',
+  kedalaman_jawapan: 'Kedalaman Jawapan',
+  komunikasi_pengolahan: 'Komunikasi / Pengolahan',
+  kematangan: 'Kematangan',
+};
+
+function ArasDescriptorTable({
+  scores,
+  arasLevel,
+  scoreValue,
+  reasoning,
+}: {
+  scores: ArasDescriptorScores;
+  arasLevel?: number;
+  scoreValue?: number;
+  reasoning?: string;
+}) {
+  const rows = Object.entries(DESCRIPTOR_LABELS) as [keyof ArasDescriptorScores, string][];
+
+  function renderValue(key: keyof ArasDescriptorScores, val: string | boolean) {
+    if (key === 'kematangan') {
+      return val ? (
+        <span className="text-[#059669] flex items-center gap-1"><Check className="w-4 h-4" /> ada</span>
+      ) : (
+        <span className="text-[#9CA3AF] flex items-center gap-1"><X className="w-4 h-4" /> tidak</span>
+      );
+    }
+    const v = String(val);
+    const positive = ['sangat jelas', 'sangat sesuai', 'sangat menarik', 'sangat mendalam', 'tepat', 'mendalam', 'menarik', 'jelas', 'sesuai', 'ada'].some((w) =>
+      v.toLowerCase().includes(w)
+    );
+    const icon = positive ? (
+      <Check className="w-4 h-4 text-[#059669] flex-shrink-0" />
+    ) : (
+      <Minus className="w-4 h-4 text-[#9CA3AF] flex-shrink-0" />
+    );
+    return (
+      <span className="flex items-center gap-1.5 text-[#374151]">
+        {icon} {v}
+      </span>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-edu-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-[#E5E7EB]">
+        <h3 className="text-lg font-bold text-[#111827]">Kriteria Penilaian SPM</h3>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="bg-[#F9FAFB]">
+          <tr>
+            <th className="text-left px-6 py-3 text-[#6B7280] font-medium">Kriteria</th>
+            <th className="text-left px-6 py-3 text-[#6B7280] font-medium">Penilaian Anda</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[#E5E7EB]">
+          {rows.map(([key, label]) => (
+            <tr key={key}>
+              <td className="px-6 py-3 text-[#374151]">{label}</td>
+              <td className="px-6 py-3">{renderValue(key, (scores as any)[key])}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="bg-[#EFF6FF]">
+          <tr>
+            <td colSpan={2} className="px-6 py-3 font-semibold text-[#1E3A8A]">
+              {arasLevel !== undefined && `Aras ${arasLevel}`}
+              {scoreValue !== undefined && ` · ${scoreValue} markah`}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+      {reasoning && (
+        <div className="px-6 py-4 border-t border-[#E5E7EB] text-sm text-[#374151] bg-[#FAFAFA]">
+          <span className="font-medium text-[#111827]">Alasan Pemeriksa: </span>
+          {reasoning}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── F/H/C recursive code tree (struktur only) ─────────────────────────────────
+
+function CodeTreePanel({
+  nodes,
+  score,
+  maxScore,
+}: {
+  nodes: MatchedNode[];
+  score: number;
+  maxScore: number;
+}) {
+  return (
+    <div className="bg-white rounded-xl shadow-edu-sm p-6">
+      <h3 className="text-lg font-bold text-[#111827] mb-4">Semakan Kod F/H/C</h3>
+      <div className="space-y-1 mb-4">
+        {nodes.map((n) => (
+          <MatchedNodeRow key={n.code} node={n} depth={0} />
+        ))}
+      </div>
+      <div className="border-t border-[#E5E7EB] pt-4 text-right">
+        <span className="text-lg font-bold text-[#111827]">
+          {score} / {maxScore} markah
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function MatchedNodeRow({ node, depth }: { node: MatchedNode; depth: number }) {
+  const icon = node.matched ? (
+    <Check className="w-4 h-4 text-[#059669] flex-shrink-0" />
+  ) : (
+    <X className="w-4 h-4 text-[#EF4444] flex-shrink-0" />
+  );
+
+  const typeColors: Record<string, string> = {
+    F: 'font-semibold text-[#111827]',
+    H: 'text-[#374151]',
+    C: 'text-[#6B7280] italic text-sm',
+  };
+
+  return (
+    <div>
+      <div
+        style={{ paddingLeft: `${depth * 20}px` }}
+        className={`flex items-start gap-2 py-1 ${typeColors[node.type] ?? ''}`}
+      >
+        {icon}
+        <span className="font-mono text-xs bg-[#F3F4F6] px-1.5 py-0.5 rounded flex-shrink-0 self-start mt-0.5">
+          {node.code}
+        </span>
+        <div className="flex-1 min-w-0">
+          <span>{node.text}</span>
+          {node.matched && node.evidence && (
+            <p className="text-xs text-[#6B7280] mt-0.5 italic">
+              "…{node.evidence}…"
+            </p>
+          )}
+        </div>
+      </div>
+      {node.children.map((child) => (
+        <MatchedNodeRow key={child.code} node={child} depth={depth + 1} />
+      ))}
     </div>
   );
 }

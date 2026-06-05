@@ -5,6 +5,7 @@ from .learning_progress import LearningProgress
 from .chapter import Chapter
 from .topic import Topic
 from .topic_page import TopicPage
+from .topic_chunk import TopicChunk
 from .completed_topic import CompletedTopic
 from .bookmarked_topic import BookmarkedTopic
 from .password_reset_token import PasswordResetToken
@@ -14,11 +15,14 @@ from .attempt_question import AttemptQuestion
 from .attempt_answer import AttemptAnswer
 from .chat_conversation import ChatConversation
 from .chat_message import ChatMessage
+from .essay_question import EssayQuestion
+from .essay_attempt import EssayAttempt
 
 __all__ = [
     'Student', 'Session', 'LearningProgress',
-    'Chapter', 'Topic', 'TopicPage',
+    'Chapter', 'Topic', 'TopicPage', 'TopicChunk',
     'CompletedTopic', 'BookmarkedTopic', 'PasswordResetToken',
     'Quiz', 'QuizAttempt', 'AttemptQuestion', 'AttemptAnswer',
     'ChatConversation', 'ChatMessage',
+    'EssayQuestion', 'EssayAttempt',
 ]

@@ -42,6 +42,9 @@ export default function App() {
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [selectedEssayId, setSelectedEssayId] = useState<string | null>(null);
+  const [selectedEssayQuestionId, setSelectedEssayQuestionId] = useState<string | null>(null);
+  const [selectedFormLevel, setSelectedFormLevel] = useState<string | null>(null);
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
 
   // Once auth state is restored, jump straight to dashboard if logged in.
   useEffect(() => {
@@ -52,12 +55,27 @@ export default function App() {
 
   const navigate = (
     page: Page,
-    params?: { topicId?: string; quizId?: string; essayId?: string; attemptId?: string | null }
+    params?: {
+      topicId?: string;
+      quizId?: string;
+      essayId?: string;
+      questionId?: string;
+      attemptId?: string | null;
+      formLevel?: string;
+      chapterId?: string;
+    }
   ) => {
     if (params?.topicId) setSelectedTopicId(params.topicId);
     if (params?.quizId) setSelectedQuizId(params.quizId);
     if (params?.essayId) setSelectedEssayId(params.essayId);
+    if (params?.questionId) setSelectedEssayQuestionId(params.questionId);
     if (params?.attemptId !== undefined) setSelectedAttemptId(params.attemptId);
+    // Chapter deep-link: set when provided, reset to null when navigating to
+    // 'topics' without a chapter hint so stale state doesn't persist.
+    if (page === 'topics') {
+      setSelectedFormLevel(params?.formLevel ?? null);
+      setSelectedChapterId(params?.chapterId ?? null);
+    }
     setCurrentPage(page);
   };
 
@@ -87,7 +105,13 @@ export default function App() {
       case 'dashboard':
         return <Dashboard onNavigate={navigate} />;
       case 'topics':
-        return <TopicsBrowser onNavigate={navigate} />;
+        return (
+          <TopicsBrowser
+            onNavigate={navigate}
+            initialFormLevel={selectedFormLevel}
+            initialChapterId={selectedChapterId}
+          />
+        );
       case 'topic-content':
         return <TopicContent onNavigate={navigate} topicId={selectedTopicId} />;
       case 'ai-tutor':
@@ -101,9 +125,9 @@ export default function App() {
       case 'essay-practice':
         return <EssayPractice onNavigate={navigate} />;
       case 'essay-writing':
-        return <EssayWriting onNavigate={navigate} essayId={selectedEssayId} />;
+        return <EssayWriting onNavigate={navigate} questionId={selectedEssayQuestionId} />;
       case 'essay-feedback':
-        return <EssayFeedback onNavigate={navigate} essayId={selectedEssayId} />;
+        return <EssayFeedback onNavigate={navigate} attemptId={selectedAttemptId} />;
       case 'progress':
         return <MyProgress onNavigate={navigate} />;
       case 'bookmarks':

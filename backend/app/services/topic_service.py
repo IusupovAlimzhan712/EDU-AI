@@ -17,6 +17,8 @@ from ..repositories import (
     TopicRepository,
     LearningProgressRepository,
     StudentRepository,
+    QuizAttemptRepository,
+    EssayRepository,
 )
 from ..utils.errors import NotFoundError, ValidationError
 
@@ -202,6 +204,74 @@ class TopicService:
             if t.topic_id in set(completed_ids):
                 per_chapter[key]['completedTopics'] += 1
 
+        # Quiz stats — submitted attempts only
+        all_attempts = QuizAttemptRepository.list_for_student(student_id)
+        submitted = [a for a in all_attempts if a.status == 'submitted']
+        quizzes_completed = len(submitted)
+        percentages = [
+            round((a.score / a.max_score) * 100, 2)
+            for a in submitted
+            if a.score is not None and a.max_score and a.max_score > 0
+        ]
+        quiz_average = round(sum(percentages) / len(percentages), 2) if percentages else None
+        best_quiz_percentage = max(percentages) if percentages else None
+
+        # Per-chapter quiz performance: group chapter-scoped ('bab') attempt scores
+        # by (form_level, chapter_id).  a.quiz is lazy-loaded once per unique quiz_id
+        # and cached by SQLAlchemy, so this adds only O(unique_quizzes) extra queries.
+        chapter_scores: dict[tuple, list[float]] = {}
+        for a in submitted:
+            if (
+                a.quiz
+                and a.quiz.scope == 'bab'
+                and a.quiz.chapter_id is not None
+                and a.score is not None
+                and a.max_score
+                and a.max_score > 0
+            ):
+                ch_key = (a.quiz.form_level, a.quiz.chapter_id)
+                chapter_scores.setdefault(ch_key, []).append(
+                    round((a.score / a.max_score) * 100, 2)
+                )
+
+        # Attach quiz stats to each chapter entry
+        for chapter_data in per_chapter.values():
+            scores = chapter_scores.get(
+                (chapter_data['formLevel'], chapter_data['chapterId']), []
+            )
+            chapter_data['quizAverage'] = (
+                round(sum(scores) / len(scores), 1) if scores else None
+            )
+            chapter_data['quizAttemptCount'] = len(scores)
+
+        # Per-chapter essay performance (graded attempts only)
+        # Chapter mastery formula (documented in plan):
+        #   0.40 × quiz + 0.25 × essay + 0.35 × completion
+        # Weights redistribute when a signal is unavailable.
+        essay_chapter_scores: dict[tuple, list[float]] = {}
+        all_essay_attempts = EssayRepository.list_for_student(student_id)
+        for ea in all_essay_attempts:
+            if (
+                ea.grading_status == 'done'
+                and ea.score is not None
+                and ea.max_score
+                and ea.max_score > 0
+                and ea.question
+            ):
+                ch_key = (ea.question.form_level, ea.question.chapter_id)
+                essay_chapter_scores.setdefault(ch_key, []).append(
+                    round((ea.score / ea.max_score) * 100, 1)
+                )
+
+        for chapter_data in per_chapter.values():
+            e_scores = essay_chapter_scores.get(
+                (chapter_data['formLevel'], chapter_data['chapterId']), []
+            )
+            chapter_data['essayAverage'] = (
+                round(sum(e_scores) / len(e_scores), 1) if e_scores else None
+            )
+            chapter_data['essayAttemptCount'] = len(e_scores)
+
         return {
             'progressId': progress.progress_id,
             'studentId': student_id,
@@ -209,6 +279,9 @@ class TopicService:
             'completedTopicsCount': len(completed_ids),
             'bookmarkedTopicsCount': len(bookmarked_ids),
             'completionRate': round(completion_rate, 2),
+            'quizzesCompleted': quizzes_completed,
+            'quizAverage': quiz_average,
+            'bestQuizPercentage': best_quiz_percentage,
             'lastUpdated': progress.last_updated.isoformat()
                 if progress.last_updated else None,
             'byChapter': sorted(

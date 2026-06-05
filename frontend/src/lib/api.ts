@@ -207,6 +207,9 @@ export interface ProgressOverview {
   completedTopicsCount: number;
   bookmarkedTopicsCount: number;
   completionRate: number;
+  quizzesCompleted: number;
+  quizAverage: number | null;
+  bestQuizPercentage: number | null;
   lastUpdated: string;
   byChapter: Array<{
     formLevel: number;
@@ -214,6 +217,10 @@ export interface ProgressOverview {
     chapterName: string;
     totalTopics: number;
     completedTopics: number;
+    quizAverage: number | null;      // avg % across chapter-scoped submitted attempts
+    quizAttemptCount: number;         // number of chapter-scoped attempt scores
+    essayAverage: number | null;     // avg % across graded essay attempts for this chapter
+    essayAttemptCount: number;        // number of graded essay attempts
   }>;
 }
 
@@ -263,6 +270,10 @@ export interface QuizAttempt {
   correctCount: number | null;
   totalQuestions: number | null;
   percentage: number | null;
+  // Populated by list_my_attempts (not present on single-attempt fetch)
+  quizTitle?: string;
+  quizChapterId?: number | null;
+  quizFormLevel?: number;
   quiz?: QuizSummary;
   questions?: QuizQuestionView[];
 }
@@ -284,6 +295,10 @@ export interface ChatMessage {
   content: string;
   sourcePageStart: number | null;
   sourcePageEnd: number | null;
+  /** Precise list of retrieved page numbers — present on new in-session messages, absent on DB-loaded history. */
+  sourcePages?: number[] | null;
+  /** Topic names of retrieved chunks — populated for General Tutor messages, absent on Side Tutor and DB-loaded history. */
+  sourceTopics?: string[] | null;
   validationStatus: 'ok' | 'warned' | 'na';
   validationWarning: string | null;
   createdAt: string;
@@ -298,6 +313,78 @@ export interface ChatConversation {
   messages: ChatMessage[];
 }
 
+
+// ============ Essay module types ============
+
+export interface CodeNode {
+  code: string;
+  type: 'F' | 'H' | 'C';
+  text: string;
+  children: CodeNode[];
+}
+
+export interface MarkingScheme {
+  maxMarks: number;
+  nodes: CodeNode[];
+  referencePoints?: string[];  // esei only
+}
+
+export interface EssayQuestion {
+  questionId: number;
+  questionText: string;
+  questionType: 'struktur' | 'esei';
+  formLevel: 4 | 5;
+  chapterId: number;
+  chapterName: string;
+  subQuestion: string;
+  maxMarks: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  markingScheme: MarkingScheme;
+  modelAnswer: string;
+  bestScore?: number | null;
+  attemptCount?: number;
+}
+
+export interface MatchedNode {
+  code: string;
+  type: 'F' | 'H' | 'C';
+  text: string;
+  matched: boolean;
+  evidence: string | null;
+  children: MatchedNode[];
+}
+
+export interface ArasDescriptorScores {
+  pengetahuan_pemahaman: string;
+  bukti_contoh: string;
+  membuat_inferens: string;
+  kedalaman_jawapan: string;
+  komunikasi_pengolahan: string;
+  kematangan: boolean;
+}
+
+export interface EssayAttempt {
+  attemptId: number;
+  questionId: number;
+  responseText: string;
+  status: 'draft' | 'submitted' | 'graded';
+  gradingStatus: 'pending' | 'grading' | 'done' | 'failed';
+  isNoteForm?: boolean;
+  arasLevel?: number;
+  score?: number;
+  maxScore?: number;
+  matchedNodes?: MatchedNode[];
+  feedbackJson?: {
+    strengths: string[];
+    improvements: string[];
+    detailedFeedback: string;
+    arasDescriptorScores?: ArasDescriptorScores;
+    arasReasoning?: string;
+  };
+  startedAt: string;
+  submittedAt?: string;
+  question?: EssayQuestion;
+}
 
 // ---------- Public API ----------
 
@@ -480,6 +567,7 @@ export const api = {
         validationWarning: string | null;
         sourcePageStart: number | null;
         sourcePageEnd: number | null;
+        sourcePages: number[] | null;
       }) => void;
       onError: (message: string) => void;
     },
@@ -546,6 +634,7 @@ export const api = {
                 validationWarning: payload.validation_warning ?? null,
                 sourcePageStart: payload.source_page_start ?? null,
                 sourcePageEnd: payload.source_page_end ?? null,
+                sourcePages: Array.isArray(payload.source_pages) ? payload.source_pages : null,
               });
             } else if (eventName === 'error') {
               callbacks.onError(payload.message ?? 'AI error.');
@@ -580,6 +669,8 @@ export const api = {
         validationWarning: string | null;
         sourcePageStart: number | null;
         sourcePageEnd: number | null;
+        sourcePages: number[] | null;
+        sourceTopics: string[] | null;
       }) => void;
       onError: (message: string) => void;
     },
@@ -630,6 +721,8 @@ export const api = {
               validationWarning: payload.validation_warning ?? null,
               sourcePageStart: payload.source_page_start ?? null,
               sourcePageEnd: payload.source_page_end ?? null,
+              sourcePages: Array.isArray(payload.source_pages) ? payload.source_pages : null,
+              sourceTopics: Array.isArray(payload.source_topics) ? payload.source_topics : null,
             });
             else if (eventName === 'error') callbacks.onError(payload.message ?? 'AI error.');
           }
@@ -734,6 +827,111 @@ export const api = {
         if (err?.name !== 'AbortError') {
           callbacks.onError(err?.message ?? 'Stream error.');
         }
+      }
+    })();
+
+    return controller;
+  },
+
+  // ============ Essay module ============
+
+  listEssayQuestions: (params: { formLevel?: number; chapterId?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.formLevel) qs.set('form_level', String(params.formLevel));
+    if (params.chapterId) qs.set('chapter_id', String(params.chapterId));
+    const suffix = qs.toString();
+    return request<EssayQuestion[]>(`/essay-questions${suffix ? '?' + suffix : ''}`);
+  },
+
+  getEssayQuestion: (questionId: number) =>
+    request<EssayQuestion>(`/essay-questions/${questionId}`),
+
+  startEssayAttempt: (questionId: number) =>
+    request<EssayAttempt>(`/essay-questions/${questionId}/attempts`, { method: 'POST' }),
+
+  listMyEssayAttempts: (questionId?: number) => {
+    const qs = questionId ? `?question_id=${questionId}` : '';
+    return request<EssayAttempt[]>(`/me/essay-attempts${qs}`);
+  },
+
+  getEssayAttempt: (attemptId: number) =>
+    request<EssayAttempt>(`/me/essay-attempts/${attemptId}`),
+
+  saveEssayDraft: (attemptId: number, responseText: string) =>
+    request<EssayAttempt>(`/me/essay-attempts/${attemptId}/draft`, {
+      method: 'PATCH',
+      body: { responseText },
+    }),
+
+  submitEssayAttempt: (attemptId: number) =>
+    request<EssayAttempt>(`/me/essay-attempts/${attemptId}/submit`, { method: 'POST' }),
+
+  /**
+   * Stream essay grading results via SSE.
+   * Events: status (grading progress), done (final graded result), error.
+   * Returns an AbortController to cancel the stream.
+   */
+  streamEssayGrading: (
+    attemptId: number,
+    callbacks: {
+      onStatus: (info: { gradingStatus: string }) => void;
+      onDone: (attempt: EssayAttempt) => void;
+      onError: (message: string) => void;
+    },
+  ): AbortController => {
+    const controller = new AbortController();
+    const token = tokenStore.getAccess();
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/me/essay-attempts/${attemptId}/stream`,
+          {
+            method: 'GET',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            signal: controller.signal,
+          },
+        );
+
+        if (!res.ok) { callbacks.onError(`Stream failed (${res.status})`); return; }
+        if (!res.body) { callbacks.onError('Streaming not supported by this browser.'); return; }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
+
+          for (const chunk of events) {
+            const lines = chunk.split('\n');
+            let eventName = 'message';
+            let dataLine = '';
+            for (const line of lines) {
+              if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+              else if (line.startsWith('data: ')) dataLine = line.slice(6);
+            }
+            if (!dataLine) continue;
+
+            let payload: any;
+            try { payload = JSON.parse(dataLine); } catch { continue; }
+
+            if (eventName === 'status') {
+              callbacks.onStatus({ gradingStatus: payload.message ?? payload.gradingStatus ?? '' });
+            } else if (eventName === 'done') {
+              callbacks.onDone(payload as EssayAttempt);
+            } else if (eventName === 'error') {
+              callbacks.onError(payload.message ?? 'Grading failed.');
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') callbacks.onError(err?.message ?? 'Stream error.');
       }
     })();
 
