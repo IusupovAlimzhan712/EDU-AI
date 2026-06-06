@@ -41,7 +41,6 @@ export default function App() {
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
-  const [selectedEssayId, setSelectedEssayId] = useState<string | null>(null);
   const [selectedEssayQuestionId, setSelectedEssayQuestionId] = useState<string | null>(null);
   const [selectedFormLevel, setSelectedFormLevel] = useState<string | null>(null);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
@@ -58,7 +57,6 @@ export default function App() {
     params?: {
       topicId?: string;
       quizId?: string;
-      essayId?: string;
       questionId?: string;
       attemptId?: string | null;
       formLevel?: string;
@@ -67,7 +65,6 @@ export default function App() {
   ) => {
     if (params?.topicId) setSelectedTopicId(params.topicId);
     if (params?.quizId) setSelectedQuizId(params.quizId);
-    if (params?.essayId) setSelectedEssayId(params.essayId);
     if (params?.questionId) setSelectedEssayQuestionId(params.questionId);
     if (params?.attemptId !== undefined) setSelectedAttemptId(params.attemptId);
     // Chapter deep-link: set when provided, reset to null when navigating to

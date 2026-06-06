@@ -16,25 +16,9 @@ from flask import Blueprint, request, jsonify, Response, stream_with_context
 from ..services import EssayService
 from ..utils.errors import BadRequestError
 from ._decorators import auth_required, current_student_id
+from ._utils import _body, _int_arg
 
 essay_bp = Blueprint('essay', __name__)
-
-
-def _body() -> dict:
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        raise BadRequestError('Request body must be JSON.')
-    return data
-
-
-def _int_arg(name):
-    raw = request.args.get(name)
-    if raw is None or raw == '':
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        raise BadRequestError(f'Query parameter `{name}` must be an integer.')
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +82,13 @@ def save_draft(attempt_id):
 @auth_required
 def submit_attempt(attempt_id):
     result = EssayService.submit_attempt(current_student_id(), attempt_id)
+    return jsonify(result), 200
+
+
+@essay_bp.post('/me/essay-attempts/<int:attempt_id>/retry')
+@auth_required
+def retry_grading(attempt_id):
+    result = EssayService.retry_grading(current_student_id(), attempt_id)
     return jsonify(result), 200
 
 

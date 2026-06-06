@@ -13,7 +13,7 @@
  */
 
 const API_BASE_URL =
-  (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:5000/api';
+  (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:5001/api';
 
 // ── Client-side streaming normalizer ──────────────────────────────────────
 // Applied to each token chunk BEFORE adding to the streaming buffer.
@@ -159,6 +159,8 @@ export interface Student {
   fullName: string;
   formLevel: number;
   registrationDate: string;
+  quizDifficulty: 'easy' | 'medium' | 'hard' | null;
+  questionsPerQuiz: number | null;
 }
 
 export interface AuthResponse {
@@ -342,6 +344,7 @@ export interface EssayQuestion {
   markingScheme: MarkingScheme;
   modelAnswer: string;
   bestScore?: number | null;
+  bestMaxScore?: number | null;
   attemptCount?: number;
 }
 
@@ -366,13 +369,15 @@ export interface ArasDescriptorScores {
 export interface EssayAttempt {
   attemptId: number;
   questionId: number;
-  responseText: string;
+  studentId: number;
+  responseText: string | null;
   status: 'draft' | 'submitted' | 'graded';
   gradingStatus: 'pending' | 'grading' | 'done' | 'failed';
-  isNoteForm?: boolean;
-  arasLevel?: number;
-  score?: number;
-  maxScore?: number;
+  isNoteForm?: boolean | null;
+  arasLevel?: number | null;
+  score?: number | null;
+  maxScore?: number | null;
+  percentage?: number | null;
   matchedNodes?: MatchedNode[];
   feedbackJson?: {
     strengths: string[];
@@ -427,7 +432,12 @@ export const api = {
   // ----- Profile / me -----
   getMe: () => request<Student>('/me'),
 
-  updateMe: (payload: { fullName?: string; formLevel?: number }) =>
+  updateMe: (payload: {
+    fullName?: string;
+    formLevel?: number;
+    quizDifficulty?: 'easy' | 'medium' | 'hard';
+    questionsPerQuiz?: number;
+  }) =>
     request<{ message: string; student: Student }>('/me', {
       method: 'PATCH',
       body: payload,
@@ -473,9 +483,6 @@ export const api = {
     return URL.createObjectURL(blob);
   },
 
-  getTopicPage: (topicId: number, pageNumber: number) =>
-    request<TopicPage>(`/topics/${topicId}/pages/${pageNumber}`),
-
   getTopic: (topicId: number) =>
     request<TopicDetail>(`/topics/${topicId}`),
 
@@ -502,11 +509,6 @@ export const api = {
     const qs = formLevel ? `?form_level=${formLevel}` : '';
     return request<QuizSummary[]>(`/quizzes${qs}`);
   },
-
-  getQuiz: (quizId: number) =>
-    request<QuizSummary & { questions: QuizQuestionView[] }>(
-      `/quizzes/${quizId}`
-    ),
 
   startAttempt: (quizId: number) =>
     request<QuizAttempt>(`/quizzes/${quizId}/attempts`, { method: 'POST' }),
@@ -858,13 +860,16 @@ export const api = {
     request<EssayAttempt>(`/me/essay-attempts/${attemptId}`),
 
   saveEssayDraft: (attemptId: number, responseText: string) =>
-    request<EssayAttempt>(`/me/essay-attempts/${attemptId}/draft`, {
+    request<Partial<EssayAttempt>>(`/me/essay-attempts/${attemptId}/draft`, {
       method: 'PATCH',
       body: { responseText },
     }),
 
   submitEssayAttempt: (attemptId: number) =>
     request<EssayAttempt>(`/me/essay-attempts/${attemptId}/submit`, { method: 'POST' }),
+
+  retryEssayGrading: (attemptId: number) =>
+    request<EssayAttempt>(`/me/essay-attempts/${attemptId}/retry`, { method: 'POST' }),
 
   /**
    * Stream essay grading results via SSE.
@@ -938,7 +943,4 @@ export const api = {
     return controller;
   },
 
-  // ----- Health -----
-  health: () =>
-    request<{ status: string }>('/health', { auth: false }),
 };

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Checkbox } from '../components/ui/checkbox';
 import { useAuth } from '../context/AuthContext';
 import { APIError } from '../lib/api';
 
@@ -16,7 +15,6 @@ export function Login({ onNavigate, onLogin }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
 
@@ -123,17 +121,7 @@ export function Login({ onNavigate, onLogin }: LoginProps) {
               )}
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="remember"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                />
-                <label htmlFor="remember" className="text-sm text-[#374151] cursor-pointer">
-                  Remember me
-                </label>
-              </div>
+            <div className="flex items-center justify-end">
               <button
                 type="button"
                 onClick={() => onNavigate('forgot-password')}

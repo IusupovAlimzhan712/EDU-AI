@@ -10,7 +10,7 @@ Two question types:
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterator, List, Optional
 
 from openai import OpenAI
@@ -136,8 +136,18 @@ class EssayService:
         if not (attempt.response_text or '').strip():
             raise ValidationError(errors={'responseText': 'Cannot submit an empty response.'})
         attempt.status = 'submitted'
-        attempt.submitted_at = datetime.utcnow()
-        attempt.grading_status = 'grading'
+        attempt.submitted_at = datetime.now(timezone.utc)
+        attempt.grading_status = 'pending'
+        StudentRepository.commit()
+        return attempt.to_summary_dict()
+
+    @staticmethod
+    def retry_grading(student_id: int, attempt_id: int) -> dict:
+        """Reset a stuck or failed grading attempt back to 'pending' so the SSE stream can re-run it."""
+        attempt = EssayService._fetch_owned_attempt(student_id, attempt_id)
+        if attempt.grading_status not in ('failed', 'grading'):
+            raise ValidationError(errors={'status': 'Attempt is not in a retryable state.'})
+        EssayRepository.set_grading_status(attempt, 'pending')
         StudentRepository.commit()
         return attempt.to_summary_dict()
 
@@ -159,9 +169,16 @@ class EssayService:
             yield {'event': 'error', 'message': 'Grading failed. Please try submitting again.'}
             return
 
-        if attempt.grading_status not in ('grading', 'pending'):
+        if attempt.grading_status == 'grading':
+            yield {'event': 'error', 'message': 'Penilaian sedang dijalankan. Sila muat semula halaman selepas beberapa saat.'}
+            return
+
+        if attempt.grading_status != 'pending':
             yield {'event': 'error', 'message': 'Attempt is not ready for grading.'}
             return
+
+        attempt.grading_status = 'grading'
+        StudentRepository.commit()
 
         if not (attempt.response_text or '').strip():
             yield {'event': 'error', 'message': 'No response text to grade.'}
@@ -200,7 +217,7 @@ class EssayService:
 
         if question.question_type == 'struktur':
             matched = result.get('matchedNodes', [])
-            matched_count = sum(1 for n in matched if _count_all_matched(n))
+            matched_count = sum(_count_all_matched(n) for n in matched)
             score = min(matched_count, max_score)
         else:
             aras = int(result.get('arasLevel', 1))
@@ -360,6 +377,7 @@ Arahan:
         sub_question: Optional[str] = None,
         difficulty: str = 'medium',
         max_retries: int = 3,
+        angle_hint: str = '',
     ) -> EssayQuestion:
         from ..repositories import EssayRepository as ER
 
@@ -378,7 +396,7 @@ Arahan:
         for attempt_num in range(1, max_retries + 1):
             try:
                 pkg = EssayService._call_generation_llm(
-                    context, question_type, max_marks, last_reason
+                    context, question_type, max_marks, last_reason, angle_hint, difficulty
                 )
                 pkg['questionType'] = question_type
                 pkg['maxMarks'] = max_marks
@@ -420,12 +438,84 @@ Arahan:
             f'Last reason: {last_reason}'
         )
 
+    # Bloom/SPM-aligned difficulty instructions injected into the generation prompt.
+    # Easy  = L1-L2 Remember/Understand (Aras 1)   — list and describe facts
+    # Medium = L3-L4 Apply/Analyse     (Aras 2-3)  — explain causes, effects, roles
+    # Hard  = L5-L6 Evaluate/Create    (Aras 4 KBAT) — evaluate, compare, judge
+    _DIFFICULTY_INSTRUCTIONS: dict[str, dict[str, str]] = {
+        'struktur': {
+            'easy': (
+                'TAHAP KESUKARAN: MUDAH (Bloom L1-L2 — Ingatan/Kefahaman, Aras SPM 1).\n'
+                'Tanya pelajar untuk MENYENARAIKAN atau MENYATAKAN fakta sejarah secara terus: '
+                'ciri-ciri, tokoh-tokoh, kandungan perjanjian, peristiwa, atau isi kandungan sesuatu dasar.\n'
+                'Kata kerja wajib: Nyatakan / Senaraikan / Huraikan ciri-ciri / Jelaskan kandungan.\n'
+                'JANGAN tanya tentang sebab, kesan, cabaran, atau penilaian — soalan mudah hanya '
+                'memerlukan ingatan dan pemahaman fakta terus.'
+            ),
+            'medium': (
+                'TAHAP KESUKARAN: SEDERHANA (Bloom L3-L4 — Aplikasi/Analisis, Aras SPM 2-3).\n'
+                'Tanya pelajar untuk MENJELASKAN hubungan sebab-akibat, proses, atau peranan: '
+                'sebab-sebab sesuatu peristiwa, kesan dasar, langkah-langkah yang diambil, atau peranan tokoh.\n'
+                'Kata kerja wajib: Jelaskan sebab / Huraikan kesan / Terangkan langkah / Jelaskan peranan.\n'
+                'Soalan memerlukan PEMAHAMAN MENDALAM tentang MENGAPA atau BAGAIMANA, bukan sekadar fakta.'
+            ),
+            'hard': (
+                'TAHAP KESUKARAN: SUKAR (Bloom L5-L6 — Penilaian/Sintesis, Aras SPM 4 KBAT).\n'
+                'Soalan MESTI memerlukan pelajar MENILAI, MEMBANDINGKAN, atau MENGANALISIS '
+                'keberkesanan/kelemahan/impak — bukan sekadar menyenaraikan atau menghuraikan.\n'
+                'Kata kerja WAJIB (pilih SATU): Bandingkan / Analisiskan keberkesanan / '
+                'Nilaikan halangan / Sejauh manakah X berjaya / Bezakan antara X dan Y.\n'
+                'DILARANG menggunakan "Huraikan" atau "Jelaskan" sahaja — kata kerja tersebut '
+                'adalah aras sederhana. Soalan sukar MESTI memerlukan pertimbangan dan penghakiman, '
+                'bukan sekadar penerangan terperinci.\n'
+                'Contoh BETUL: "Bandingkan kesan X dengan kesan Y dari segi Z." '
+                'atau "Analisiskan sejauh mana dasar X berjaya mengatasi masalah Y." '
+                'Contoh SALAH: "Huraikan cabaran yang dihadapi oleh X." (ini hanya aras sederhana).'
+            ),
+        },
+        'esei': {
+            'easy': (
+                'TAHAP KESUKARAN: MUDAH (Bloom L1-L2 — Ingatan/Kefahaman, Aras SPM 1-2).\n'
+                'Soalan memerlukan pelajar MENERANGKAN atau MEMBINCANGKAN pencapaian, ciri-ciri, '
+                'atau kandungan sesuatu dasar/peristiwa secara deskriptif — fakta dan huraian sahaja.\n'
+                'Kata kerja: Bincangkan pencapaian / Huraikan ciri-ciri / Terangkan kandungan.\n'
+                'Jawapan cemerlang: Aras 2-3 (3-6m) — pelajar perlu kemukakan isi dengan jelas.\n'
+                'DILARANG: '
+                '(1) Soalan penilaian, "sejauh mana", atau "nilaikan" — simpan untuk tahap sukar. '
+                '(2) Soalan perbandingan antara dua peristiwa/dasar — simpan untuk tahap sukar. '
+                '(3) Soalan tentang "kepentingan" (significance) — ini aras sederhana hingga sukar. '
+                '(4) Soalan yang memerlukan pelajar menghubungkan dua entiti ("diwarisi oleh", '
+                '"bagaimana X membawa kepada Y") — ini memerlukan analisis, bukan sekadar ingatan.'
+            ),
+            'medium': (
+                'TAHAP KESUKARAN: SEDERHANA (Bloom L3-L4 — Aplikasi/Analisis, Aras SPM 2-3).\n'
+                'Soalan memerlukan pelajar MENGANALISIS sebab-sebab, kesan-kesan, atau kepentingan '
+                'sesuatu peristiwa/dasar dengan hujah yang disokong bukti.\n'
+                'Kata kerja: Bincangkan faktor / Huraikan kesan / Jelaskan kepentingan / Analisiskan.\n'
+                'Jawapan cemerlang: Aras 3-4 (5-8m) — pelajar perlu membuat inferens dan hujah mendalam.\n'
+                'JANGAN soalan deskriptif mudah; JANGAN soalan penilaian atau perbandingan langsung.'
+            ),
+            'hard': (
+                'TAHAP KESUKARAN: SUKAR (Bloom L5-L6 — Penilaian/Sintesis, Aras SPM 4 KBAT).\n'
+                'Soalan memerlukan pelajar MENILAI, MEMBANDINGKAN, atau MEMBUKTIKAN sesuatu hujah '
+                'dengan bukti sejarah yang kukuh. Ini soalan KBAT tertinggi.\n'
+                'Kata kerja WAJIB: Nilaikan / Sejauh manakah / Bandingkan / Buktikan / Beri hujah.\n'
+                'Jawapan cemerlang: Aras 4 (7-8m) — pelajar perlu menilai, membuat pertimbangan, '
+                'dan menunjukkan kematangan hujah.\n'
+                'Contoh soalan yang BETUL: "Nilaikan sejauh mana X berjaya mencapai Y." atau '
+                '"Bandingkan X dan Y dari segi Z." JANGAN soalan deskriptif atau analisis sebab-akibat biasa.'
+            ),
+        },
+    }
+
     @staticmethod
     def _call_generation_llm(
         context: str,
         question_type: str,
         max_marks: int,
         retry_feedback: str = '',
+        angle_hint: str = '',
+        difficulty: str = 'medium',
     ) -> dict:
         type_instructions = {
             'struktur': (
@@ -443,9 +533,22 @@ Arahan:
             ),
         }[question_type]
 
+        difficulty_instruction = (
+            EssayService._DIFFICULTY_INSTRUCTIONS
+            .get(question_type, {})
+            .get(difficulty, '')
+        )
+        difficulty_note = (
+            f'\n\nARAS KESUKARAN:\n{difficulty_instruction}'
+            if difficulty_instruction else ''
+        )
         retry_note = (
             f'\n\nPEMBETULAN DIPERLUKAN (percubaan sebelum ini ditolak): {retry_feedback}'
             if retry_feedback else ''
+        )
+        angle_note = (
+            f'\n\nSUDUT SOALAN YANG DIKEHENDAKI: {angle_hint}'
+            if angle_hint else ''
         )
 
         prompt = f"""Anda adalah pembina soalan SPM Sejarah Kertas 2 yang berpengalaman.
@@ -454,7 +557,7 @@ Jana SATU pakej soalan lengkap berdasarkan teks kandungan berikut.
 Kandungan Bab:
 {context}
 
-Jenis Soalan: {type_instructions}{retry_note}
+Jenis Soalan: {type_instructions}{difficulty_note}{angle_note}{retry_note}
 
 Kembalikan JSON SAHAJA dalam format berikut:
 

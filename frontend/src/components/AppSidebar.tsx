@@ -133,9 +133,6 @@ export function AppSidebar({ currentPage, onNavigate, onLogout }: AppSidebarProp
               <button
                 onClick={async () => {
                   setShowUserMenu(false);
-                  // Prefer the parent-supplied handler (used by Settings -> App-level
-                  // routing back to the Login page); fall back to direct auth context
-                  // logout for every other page where onLogout wasn't wired up.
                   if (onLogout) {
                     onLogout();
                   } else {
@@ -151,6 +148,19 @@ export function AppSidebar({ currentPage, onNavigate, onLogout }: AppSidebarProp
             </div>
           )}
         </div>
+
+        {/* Collapsed-state logout — only visible when sidebar is collapsed */}
+        {isCollapsed && (
+          <button
+            onClick={async () => {
+              if (onLogout) { onLogout(); } else { await logout(); onNavigate('login'); }
+            }}
+            className="w-full flex items-center justify-center px-3 py-2 rounded-lg hover:bg-[#FEE2E2] transition-default mt-1"
+            title="Logout"
+          >
+            <LogOut className="w-5 h-5 text-[#DC2626]" />
+          </button>
+        )}
       </div>
 
       {/* Collapse Toggle Button */}

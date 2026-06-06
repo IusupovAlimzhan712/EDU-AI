@@ -9,6 +9,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { Button } from '../components/ui/button';
 import { MarkdownMessage } from '../components/MarkdownMessage';
+import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
 import { api, TopicDetail, TopicSummary, ChatMessage, APIError } from '../lib/api';
 
 pdfjs.GlobalWorkerOptions.workerSrc =
@@ -80,6 +81,7 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
+    let activeBlobUrl: string | null = null;
     setIsLoading(true);
     setError(null);
     setPdfUrl(null);
@@ -96,7 +98,12 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
         if (t.hasPdf) {
           try {
             const blobUrl = await api.getTopicPdfBlobUrl(t.topicId);
-            if (!cancelled) setPdfUrl(blobUrl);
+            if (!cancelled) {
+              activeBlobUrl = blobUrl;
+              setPdfUrl(blobUrl);
+            } else {
+              URL.revokeObjectURL(blobUrl);
+            }
           } catch (e) {
             if (!cancelled)
               setError(e instanceof APIError ? e.message : 'PDF could not be loaded.');
@@ -117,6 +124,7 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
     return () => {
       cancelled = true;
       chatCtrlRef.current?.abort();
+      if (activeBlobUrl) URL.revokeObjectURL(activeBlobUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -168,6 +176,7 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
       content: question,
       sourcePageStart: currentPage,
       sourcePageEnd: currentPage,
+      sourcePages: null,
       validationStatus: 'na',
       validationWarning: null,
       createdAt: new Date().toISOString(),
@@ -191,6 +200,7 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
             content: final.content,
             sourcePageStart: final.sourcePageStart,
             sourcePageEnd: final.sourcePageEnd,
+            sourcePages: final.sourcePages,
             validationStatus: final.validationStatus,
             validationWarning: final.validationWarning,
             createdAt: new Date().toISOString(),
@@ -207,6 +217,7 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
             content: `Maaf, terdapat ralat: ${msg}`,
             sourcePageStart: null,
             sourcePageEnd: null,
+            sourcePages: null,
             validationStatus: 'warned',
             validationWarning: msg,
             createdAt: new Date().toISOString(),
@@ -230,6 +241,7 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
         content: partial,
         sourcePageStart: null,
         sourcePageEnd: null,
+        sourcePages: null,
         validationStatus: 'warned',
         validationWarning: 'Penjanaan dihentikan oleh pengguna.',
         createdAt: new Date().toISOString(),
@@ -249,7 +261,7 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
       setStreamingText(null);
       streamingRef.current = '';
       setIsSending(false);
-    } catch (e) { console.error(e); }
+    } catch { /* ignore pdf render errors */ }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -524,14 +536,29 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
                           <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-2xl rounded-tl-sm px-3.5 py-2.5 overflow-hidden">
                             <MarkdownMessage content={m.content} />
                           </div>
-                          {/* Source page badge */}
-                          {m.sourcePageStart != null && (
-                            <p className="text-[10px] text-[#9CA3AF] mt-1 px-1">
-                              Rujukan: Hlm {m.sourcePageStart}
-                              {m.sourcePageEnd != null && m.sourcePageEnd !== m.sourcePageStart
-                                ? `–${m.sourcePageEnd}`
-                                : ''}
-                            </p>
+                          {/* Citation indicator — subtle dot menu, detail on hover */}
+                          {(m.sourcePages?.length || m.sourcePageStart != null) && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button className="mt-1 ml-1 text-[#D1D5DB] hover:text-[#9CA3AF] transition-colors text-sm leading-none select-none cursor-default">
+                                  ···
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="bottom"
+                                sideOffset={4}
+                                className="bg-white border border-[#E5E7EB] text-[#374151] shadow-edu-sm rounded-lg px-3 py-2 text-xs"
+                              >
+                                <p className="font-semibold text-[#111827] mb-0.5">Sumber</p>
+                                <p className="text-[#6B7280]">
+                                  {m.sourcePages?.length
+                                    ? `Hlm ${m.sourcePages.join(', ')}`
+                                    : m.sourcePageStart === m.sourcePageEnd
+                                      ? `Hlm ${m.sourcePageStart}`
+                                      : `Hlm ${m.sourcePageStart}–${m.sourcePageEnd}`}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
                           )}
                           {m.validationStatus === 'warned' && (
                             <div className="mt-1 flex items-start gap-1 px-1">

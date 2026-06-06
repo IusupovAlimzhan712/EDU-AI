@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppSidebar } from '../components/AppSidebar';
 import { CircularProgress } from '../components/CircularProgress';
 import { Button } from '../components/ui/button';
@@ -101,11 +101,35 @@ function deriveAchievements(
   return [...quizAchievements, ...essayAchievements];
 }
 
+function chapterWeaknessScore(c: {
+  totalTopics: number;
+  completedTopics: number;
+  quizAverage: number | null;
+  essayAverage?: number | null;
+}): number {
+  const completionGap = c.totalTopics > 0 ? 1 - c.completedTopics / c.totalTopics : 1;
+  const hasQuiz = c.quizAverage != null;
+  const hasEssay = c.essayAverage != null;
+  if (hasQuiz && hasEssay) {
+    return 0.40 * (1 - (c.quizAverage as number) / 100)
+         + 0.25 * (1 - (c.essayAverage as number) / 100)
+         + 0.35 * completionGap;
+  }
+  if (hasQuiz) {
+    return 0.55 * (1 - (c.quizAverage as number) / 100) + 0.45 * completionGap;
+  }
+  if (hasEssay) {
+    return 0.45 * (1 - (c.essayAverage as number) / 100) + 0.55 * completionGap;
+  }
+  return completionGap;
+}
+
 export function MyProgress({ onNavigate }: MyProgressProps) {
   const [progress, setProgress] = useState<ProgressOverview | null>(null);
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
   const [essayAttempts, setEssayAttempts] = useState<EssayAttempt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([api.getProgress(), api.listMyAttempts(), api.listMyEssayAttempts()])
@@ -114,13 +138,16 @@ export function MyProgress({ onNavigate }: MyProgressProps) {
         setAttempts(a);
         setEssayAttempts(ea);
       })
-      .catch(() => {})
+      .catch(() => setLoadError('Failed to load progress data. Please refresh the page.'))
       .finally(() => setLoading(false));
   }, []);
 
   const submitted = attempts.filter((a) => a.status === 'submitted');
   const streakDays = computeStreakDays(attempts);
-  const achievements = progress ? deriveAchievements(progress, attempts, essayAttempts) : [];
+  const achievements = useMemo(
+    () => (progress ? deriveAchievements(progress, attempts, essayAttempts) : []),
+    [progress, attempts, essayAttempts],
+  );
 
   // Last 10 submitted attempts for trend chart (chronological order)
   // attempts arrive newest-first; reverse → oldest first; slice(0,10) → 10 oldest
@@ -140,44 +167,20 @@ export function MyProgress({ onNavigate }: MyProgressProps) {
     }));
 
   // Focus areas: blend topic completion, quiz performance, and essay performance.
-  // Mastery formula: 0.40 × quiz + 0.25 × essay + 0.35 × completion.
-  // Weights redistribute when a signal is unavailable:
-  //   - No quiz: 0.45 essay + 0.55 completion (or 100% completion if no essay either)
-  //   - No essay: 0.55 quiz + 0.45 completion
-  //   - Both: full 3-signal formula
-  function chapterWeaknessScore(c: {
-    totalTopics: number;
-    completedTopics: number;
-    quizAverage: number | null;
-    essayAverage?: number | null;
-  }): number {
-    const completionGap = c.totalTopics > 0 ? 1 - c.completedTopics / c.totalTopics : 1;
-    const hasQuiz = c.quizAverage != null;
-    const hasEssay = c.essayAverage != null;
-    if (hasQuiz && hasEssay) {
-      return 0.40 * (1 - (c.quizAverage as number) / 100)
-           + 0.25 * (1 - (c.essayAverage as number) / 100)
-           + 0.35 * completionGap;
-    }
-    if (hasQuiz) {
-      return 0.55 * (1 - (c.quizAverage as number) / 100) + 0.45 * completionGap;
-    }
-    if (hasEssay) {
-      return 0.45 * (1 - (c.essayAverage as number) / 100) + 0.55 * completionGap;
-    }
-    return completionGap;
-  }
-
-  const focusChapters = (progress?.byChapter ?? [])
-    .filter((c) =>
-      c.totalTopics > 0 && (
-        c.completedTopics / c.totalTopics < 0.5 ||
-        (c.quizAverage != null && c.quizAverage < 70) ||
-        (c.essayAverage != null && c.essayAverage < 70)
-      )
-    )
-    .sort((a, b) => chapterWeaknessScore(b) - chapterWeaknessScore(a))
-    .slice(0, 3);
+  const focusChapters = useMemo(
+    () =>
+      (progress?.byChapter ?? [])
+        .filter((c) =>
+          c.totalTopics > 0 && (
+            c.completedTopics / c.totalTopics < 0.5 ||
+            (c.quizAverage != null && c.quizAverage < 70) ||
+            (c.essayAverage != null && c.essayAverage < 70)
+          )
+        )
+        .sort((a, b) => chapterWeaknessScore(b) - chapterWeaknessScore(a))
+        .slice(0, 3),
+    [progress],
+  );
 
   // Streak heatmap: last 30 days, mark days with quiz activity
   const submittedDaySet = new Set(
@@ -201,6 +204,13 @@ export function MyProgress({ onNavigate }: MyProgressProps) {
           <h1 className="text-2xl font-bold text-[#111827] mb-1">My Progress</h1>
           <p className="text-[#6B7280]">Track your learning journey</p>
         </div>
+
+        {/* Error banner */}
+        {loadError && (
+          <div className="mx-8 mt-6 p-4 rounded-lg bg-[#FEE2E2] border border-[#DC2626]/30 text-sm text-[#991B1B]">
+            {loadError}
+          </div>
+        )}
 
         {/* Main Content */}
         <div className="p-8 max-w-7xl">
@@ -405,9 +415,14 @@ export function MyProgress({ onNavigate }: MyProgressProps) {
 
                     const lowCompletion = completionPct < 50;
                     const lowQuiz = quizPct != null && quizPct < 70;
+                    const lowEssay = chapter.essayAverage != null && chapter.essayAverage < 70;
                     const reason =
+                      lowCompletion && lowQuiz && lowEssay ? 'Low completion, quiz & essay scores' :
                       lowCompletion && lowQuiz ? 'Low completion & quiz score' :
+                      lowCompletion && lowEssay ? 'Low completion & essay score' :
+                      lowQuiz && lowEssay ? 'Low quiz & essay scores' :
                       lowQuiz ? 'Low quiz score' :
+                      lowEssay ? 'Low essay score' :
                       'Low topic completion';
 
                     const quizColor =

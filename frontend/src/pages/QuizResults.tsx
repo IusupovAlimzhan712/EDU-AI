@@ -19,7 +19,11 @@ export function QuizResults({ onNavigate, quizId, attemptId }: QuizResultsProps)
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!attemptId) return;
+    if (!attemptId) {
+      setIsLoading(false);
+      setError('No attempt ID provided.');
+      return;
+    }
     let cancelled = false;
     setIsLoading(true);
     api

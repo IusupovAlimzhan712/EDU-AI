@@ -3,8 +3,7 @@ import { AppSidebar } from '../components/AppSidebar';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Switch } from '../components/ui/switch';
-import { User, Mail, Shield, Bell, Palette, BookOpen, Download, Trash2 } from 'lucide-react';
+import { User, Shield, Bell, BookOpen, Download, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api, APIError } from '../lib/api';
 
@@ -29,13 +28,19 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
         email: student.email,
         formLevel: String(student.formLevel),
       });
+      setPrefs({
+        quizDifficulty: student.quizDifficulty ?? 'medium',
+        questionsPerQuiz: String(student.questionsPerQuiz ?? 10),
+      });
     }
   }, [student]);
 
-  const [notifications, setNotifications] = useState({
-    email: true,
-    studyReminders: true,
+  const [prefs, setPrefs] = useState({
+    quizDifficulty: (student?.quizDifficulty ?? 'medium') as 'easy' | 'medium' | 'hard',
+    questionsPerQuiz: String(student?.questionsPerQuiz ?? 10),
   });
+  const [prefsBanner, setPrefsBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [prefsSaving, setPrefsSaving] = useState(false);
 
   // Banner state for inline feedback
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -65,6 +70,27 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
       setIsSaving(false);
     }
   };
+
+  const savePreferences = async (newPrefs: { quizDifficulty: 'easy' | 'medium' | 'hard'; questionsPerQuiz: string }) => {
+    setPrefsBanner(null);
+    setPrefsSaving(true);
+    try {
+      await api.updateMe({
+        quizDifficulty: newPrefs.quizDifficulty,
+        questionsPerQuiz: parseInt(newPrefs.questionsPerQuiz, 10),
+      });
+      await refreshProfile();
+      setPrefsBanner({ type: 'success', message: 'Saved.' });
+    } catch (err) {
+      const message =
+        err instanceof APIError ? err.message : 'Failed to save preferences.';
+      setPrefsBanner({ type: 'error', message });
+    } finally {
+      setPrefsSaving(false);
+    }
+  };
+
+  const handleSavePreferences = () => savePreferences(prefs);
 
   const handleChangePassword = () => {
     setShowPwdForm(true);
@@ -135,9 +161,6 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
                 <div className="w-20 h-20 bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] rounded-full flex items-center justify-center">
                   <User className="w-10 h-10 text-white" />
                 </div>
-                <Button variant="outline" size="sm">
-                  Change Avatar
-                </Button>
               </div>
 
               <div>
@@ -215,33 +238,9 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
               <h2 className="text-xl font-bold text-[#111827]">Notification Preferences</h2>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-[#111827]">Email Notifications</p>
-                  <p className="text-sm text-[#6B7280]">Receive updates about your progress</p>
-                </div>
-                <Switch
-                  checked={notifications.email}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, email: checked })
-                  }
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-[#111827]">Study Reminders</p>
-                  <p className="text-sm text-[#6B7280]">Get reminded to study daily</p>
-                </div>
-                <Switch
-                  checked={notifications.studyReminders}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, studyReminders: checked })
-                  }
-                />
-              </div>
-            </div>
+            <p className="text-sm text-[#6B7280]">
+              Notification preferences <span className="text-[#9CA3AF]">(coming soon)</span>
+            </p>
           </div>
 
           {/* Learning Preferences */}
@@ -258,7 +257,14 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
                 <label className="block text-sm font-medium text-[#374151] mb-2">
                   Default Quiz Difficulty
                 </label>
-                <Select defaultValue="medium">
+                <Select
+                  value={prefs.quizDifficulty}
+                  onValueChange={(value) => {
+                    const next = { ...prefs, quizDifficulty: value as 'easy' | 'medium' | 'hard' };
+                    setPrefs(next);
+                    savePreferences(next);
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -274,7 +280,14 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
                 <label className="block text-sm font-medium text-[#374151] mb-2">
                   Questions per Quiz
                 </label>
-                <Select defaultValue="10">
+                <Select
+                  value={prefs.questionsPerQuiz}
+                  onValueChange={(value) => {
+                    const next = { ...prefs, questionsPerQuiz: value };
+                    setPrefs(next);
+                    savePreferences(next);
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -285,6 +298,25 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
                     <SelectItem value="20">20 questions</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={handleSavePreferences}
+                  disabled={prefsSaving}
+                  className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white"
+                >
+                  {prefsSaving ? 'Saving…' : 'Save Preferences'}
+                </Button>
+                {prefsBanner && (
+                  <span
+                    className={`text-sm ${
+                      prefsBanner.type === 'success' ? 'text-[#059669]' : 'text-[#DC2626]'
+                    }`}
+                  >
+                    {prefsBanner.message}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -384,12 +416,12 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
             <p className="text-sm text-[#6B7280] text-center mb-2">
               EduAI v1.0.0 - AI Study Companion for SPM Students
             </p>
-            <div className="flex justify-center gap-4 text-sm">
-              <button className="text-[#1E3A8A] hover:underline">Terms & Conditions</button>
-              <span className="text-[#D1D5DB]">•</span>
-              <button className="text-[#1E3A8A] hover:underline">Privacy Policy</button>
-              <span className="text-[#D1D5DB]">•</span>
-              <button className="text-[#1E3A8A] hover:underline">Contact Support</button>
+            <div className="flex justify-center gap-4 text-sm text-[#9CA3AF]">
+              <span>Terms &amp; Conditions</span>
+              <span>•</span>
+              <span>Privacy Policy</span>
+              <span>•</span>
+              <span>Contact Support</span>
             </div>
           </div>
         </div>

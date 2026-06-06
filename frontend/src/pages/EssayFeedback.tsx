@@ -17,37 +17,80 @@ export function EssayFeedback({ onNavigate, attemptId }: EssayFeedbackProps) {
   const [gradingMsg, setGradingMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const streamRef = useRef<AbortController | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPolling = () => {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    if (fallbackTimerRef.current) { clearTimeout(fallbackTimerRef.current); fallbackTimerRef.current = null; }
+  };
 
   useEffect(() => {
     if (!attemptId) { setError('No attempt selected.'); setLoading(false); return; }
     const aId = parseInt(attemptId, 10);
+    let cancelled = false;
 
     api.getEssayAttempt(aId)
       .then((a) => {
+        if (cancelled) return;
         setAttempt(a);
         if (a.gradingStatus !== 'done' && a.gradingStatus !== 'failed') {
           startStream(aId);
         }
       })
-      .catch((err) => setError(err.message ?? 'Failed to load attempt.'))
-      .finally(() => setLoading(false));
+      .catch((err) => { if (!cancelled) setError(err.message ?? 'Failed to load attempt.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
 
-    return () => { streamRef.current?.abort(); };
-  }, [attemptId]);
+    return () => { cancelled = true; streamRef.current?.abort(); clearPolling(); };
+  }, [attemptId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startStream = (aId: number) => {
     setGradingMsg('Sedang menilai jawapan anda…');
     streamRef.current = api.streamEssayGrading(aId, {
       onStatus: (info) => setGradingMsg(`Status: ${info.gradingStatus}`),
       onDone: (finalAttempt) => {
+        clearPolling();
         setAttempt(finalAttempt);
         setGradingMsg(null);
       },
       onError: (msg) => {
+        clearPolling();
         setError(msg);
         setGradingMsg(null);
       },
     });
+
+    // Polling fallback: if SSE doesn't resolve within 30 s, poll REST every 5 s
+    fallbackTimerRef.current = setTimeout(() => {
+      pollingRef.current = setInterval(async () => {
+        try {
+          const a = await api.getEssayAttempt(aId);
+          if (a.gradingStatus === 'done') {
+            clearPolling();
+            setAttempt(a);
+            setGradingMsg(null);
+          } else if (a.gradingStatus === 'failed') {
+            clearPolling();
+            setGradingMsg(null);
+            setAttempt((prev) => prev ? { ...prev, gradingStatus: 'failed' } : prev);
+          }
+        } catch { /* ignore transient polling errors */ }
+      }, 5_000);
+    }, 30_000);
+  };
+
+  const handleRetryGrading = async () => {
+    if (!attempt) return;
+    const aId = attempt.attemptId;
+    try {
+      await api.retryEssayGrading(aId);
+      setError(null);
+      setAttempt((prev) => prev ? { ...prev, gradingStatus: 'pending' } : prev);
+      clearPolling();
+      startStream(aId);
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to retry grading.');
+    }
   };
 
   if (loading) {
@@ -106,8 +149,15 @@ export function EssayFeedback({ onNavigate, attemptId }: EssayFeedbackProps) {
 
           {/* Grading failed */}
           {attempt.gradingStatus === 'failed' && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-6">
-              Penilaian gagal. Sila cuba hantar semula.
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-6 flex items-center justify-between gap-4">
+              <span>Penilaian gagal. Sila cuba semula.</span>
+              <Button
+                onClick={handleRetryGrading}
+                size="sm"
+                className="bg-red-700 hover:bg-red-800 text-white flex-shrink-0"
+              >
+                Cuba Semula
+              </Button>
             </div>
           )}
 
@@ -119,7 +169,7 @@ export function EssayFeedback({ onNavigate, attemptId }: EssayFeedbackProps) {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h2 className="text-3xl font-bold text-[#111827]">
-                      {attempt.score}/{attempt.maxScore}
+                      {Math.round(attempt.score ?? 0)}/{attempt.maxScore}
                     </h2>
                     {!isStruktur && attempt.arasLevel && (
                       <span className="px-3 py-1 bg-[#1E3A8A] text-white rounded-full text-sm font-bold">
@@ -311,8 +361,8 @@ function ArasDescriptorTable({
   reasoning,
 }: {
   scores: ArasDescriptorScores;
-  arasLevel?: number;
-  scoreValue?: number;
+  arasLevel?: number | null;
+  scoreValue?: number | null;
   reasoning?: string;
 }) {
   const rows = Object.entries(DESCRIPTOR_LABELS) as [keyof ArasDescriptorScores, string][];
@@ -364,8 +414,8 @@ function ArasDescriptorTable({
         <tfoot className="bg-[#EFF6FF]">
           <tr>
             <td colSpan={2} className="px-6 py-3 font-semibold text-[#1E3A8A]">
-              {arasLevel !== undefined && `Aras ${arasLevel}`}
-              {scoreValue !== undefined && ` · ${scoreValue} markah`}
+              {arasLevel != null && `Aras ${arasLevel}`}
+              {scoreValue != null && ` · ${Math.round(scoreValue)} markah`}
             </td>
           </tr>
         </tfoot>
@@ -440,7 +490,7 @@ function MatchedNodeRow({ node, depth }: { node: MatchedNode; depth: number }) {
           )}
         </div>
       </div>
-      {node.children.map((child) => (
+      {(node.children ?? []).map((child) => (
         <MatchedNodeRow key={child.code} node={child} depth={depth + 1} />
       ))}
     </div>

@@ -1,18 +1,44 @@
-import { BookOpen, TrendingUp, FileText, Target, PlayCircle, MessageSquare, PenTool, Grid, Clock, CheckCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BookOpen, TrendingUp, Target, PlayCircle, MessageSquare, PenTool, Grid, Clock, CheckCircle } from 'lucide-react';
 import { AppSidebar } from '../components/AppSidebar';
 import { StatsCard } from '../components/StatsCard';
-import { CircularProgress } from '../components/CircularProgress';
 import { Button } from '../components/ui/button';
-import { Progress } from '../components/ui/progress';
+import { useAuth } from '../context/AuthContext';
+import { api, ProgressOverview, QuizAttempt } from '../lib/api';
 
 interface DashboardProps {
   onNavigate: (page: any, params?: any) => void;
 }
 
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins || 1}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
 export function Dashboard({ onNavigate }: DashboardProps) {
+  const { student } = useAuth();
   const currentHour = new Date().getHours();
   const greeting =
     currentHour < 12 ? 'Selamat Pagi' : currentHour < 18 ? 'Selamat Petang' : 'Selamat Malam';
+
+  const [progress, setProgress] = useState<ProgressOverview | null>(null);
+  const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([api.getProgress(), api.listMyAttempts()])
+      .then(([p, a]) => {
+        setProgress(p);
+        setAttempts(a);
+      })
+      .catch(() => setLoadError('Failed to load dashboard data. Please refresh the page.'))
+      .finally(() => setLoading(false));
+  }, []);
 
   const stats = [
     {
@@ -20,32 +46,47 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       iconColor: '#059669',
       iconBgColor: '#D1FAE5',
       label: 'Topics Completed',
-      value: '12/35',
-      trend: { direction: 'up' as const, value: '+3 this week' },
+      value: loading
+        ? '—'
+        : progress
+        ? `${progress.completedTopicsCount}/${progress.totalTopics}`
+        : '—',
+      trend: { direction: 'up' as const, value: loading ? '' : progress ? `${Math.round(progress.completionRate)}% done` : '' },
     },
     {
       icon: Target,
       iconColor: '#1E3A8A',
       iconBgColor: '#DBEAFE',
       label: 'Quiz Average',
-      value: '78%',
-      trend: { direction: 'up' as const, value: '+5% from last week' },
+      value: loading
+        ? '—'
+        : progress?.quizAverage != null
+        ? `${Math.round(progress.quizAverage)}%`
+        : '—',
+      trend: {
+        direction: 'up' as const,
+        value: loading ? '' : progress?.quizzesCompleted ? `${progress.quizzesCompleted} quiz${progress.quizzesCompleted === 1 ? '' : 'zes'} done` : 'No quizzes yet',
+      },
     },
     {
       icon: TrendingUp,
       iconColor: '#F59E0B',
       iconBgColor: '#FEF3C7',
-      label: 'Study Streak',
-      value: '5 days',
-      trend: { direction: 'up' as const, value: 'Keep it going!' },
+      label: 'Best Quiz Score',
+      value: loading
+        ? '—'
+        : progress?.bestQuizPercentage != null
+        ? `${Math.round(progress.bestQuizPercentage)}%`
+        : '—',
+      trend: { direction: 'up' as const, value: 'Personal best' },
     },
     {
-      icon: FileText,
+      icon: BookOpen,
       iconColor: '#7C3AED',
       iconBgColor: '#EDE9FE',
-      label: 'Essays Practiced',
-      value: '8',
-      trend: { direction: 'up' as const, value: '+2 this week' },
+      label: 'Topics Bookmarked',
+      value: loading ? '—' : progress ? String(progress.bookmarkedTopicsCount) : '—',
+      trend: { direction: 'up' as const, value: 'Saved for later' },
     },
   ];
 
@@ -84,62 +125,20 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     },
   ];
 
-  const recentActivities = [
-    {
-      icon: CheckCircle,
-      iconColor: '#059669',
-      title: 'Completed Quiz: Tamadun Awal',
-      time: '2 hours ago',
-    },
-    {
-      icon: BookOpen,
-      iconColor: '#1E3A8A',
-      title: 'Studied: Kesultanan Melayu Melaka',
-      time: '5 hours ago',
-    },
-    {
-      icon: FileText,
-      iconColor: '#7C3AED',
-      title: 'Submitted Essay: Pendudukan Jepun',
-      time: '1 day ago',
-    },
-    {
-      icon: MessageSquare,
-      iconColor: '#059669',
-      title: 'Asked AI about Perlembagaan Persekutuan',
-      time: '2 days ago',
-    },
-    {
-      icon: CheckCircle,
-      iconColor: '#059669',
-      title: 'Completed Topic: Nationalism in Malaya',
-      time: '3 days ago',
-    },
-  ];
+  // Recent activity: submitted attempts (newest first, up to 5)
+  const recentSubmissions = attempts
+    .filter((a) => a.status === 'submitted' && a.submittedAt)
+    .slice(0, 5);
 
-  const recommendedTopics = [
-    {
-      id: '1',
-      title: 'Peristiwa Bersejarah Dunia',
-      chapter: 'Bab 2 - Form 5',
-      progress: 45,
-      thumbnail: '#F59E0B',
-    },
-    {
-      id: '2',
-      title: 'Kemerdekaan Tanah Melayu',
-      chapter: 'Bab 3 - Form 5',
-      progress: 0,
-      thumbnail: '#1E3A8A',
-    },
-    {
-      id: '3',
-      title: 'Kerajaan Alam Melayu',
-      chapter: 'Bab 6 - Form 4',
-      progress: 80,
-      thumbnail: '#059669',
-    },
-  ];
+  // In-progress attempt (for "continue" banner)
+  const inProgressAttempt = attempts.find((a) => a.status === 'in_progress');
+
+  // Chapters with no completed topics yet (up to 3) — for recommendations
+  const suggestedChapters = (progress?.byChapter ?? [])
+    .filter((c) => c.completedTopics === 0)
+    .slice(0, 3);
+
+  const thumbnailColors = ['#F59E0B', '#1E3A8A', '#059669', '#7C3AED'];
 
   return (
     <div className="flex h-screen bg-[#F9FAFB]">
@@ -149,7 +148,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         {/* Header */}
         <div className="bg-white border-b border-[#E5E7EB] px-8 py-6">
           <h1 className="text-2xl font-bold text-[#111827] mb-1">
-            {greeting}, Alimzhan! 👋
+            {greeting}, {student?.fullName ?? 'Student'}! 👋
           </h1>
           <p className="text-[#6B7280]">Ready to continue your Sejarah journey?</p>
           <p className="text-sm text-[#6B7280] mt-1">
@@ -164,6 +163,12 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
         {/* Main Content */}
         <div className="p-8 max-w-7xl">
+          {loadError && (
+            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+              {loadError}
+            </div>
+          )}
+
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {stats.map((stat, index) => (
@@ -171,44 +176,33 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             ))}
           </div>
 
-          {/* Continue Learning Section */}
-          <div className="mb-8">
-            <h2 className="text-xl font-bold text-[#111827] mb-4">Continue Where You Left Off</h2>
-            <div className="bg-white rounded-xl p-6 shadow-edu-sm hover:shadow-edu-md transition-default cursor-pointer">
-              <div className="flex items-start gap-6">
-                <div className="w-32 h-32 bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] rounded-lg flex items-center justify-center flex-shrink-0">
-                  <BookOpen className="w-16 h-16 text-white" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h3 className="text-lg font-bold text-[#111827] mb-1">
-                        Tamadun Islam di Madinah
-                      </h3>
-                      <p className="text-sm text-[#6B7280]">Bab 5 - Form 4</p>
-                    </div>
-                    <CircularProgress percentage={65} size="small" />
+          {/* Continue Learning — only shown if there's an in-progress attempt */}
+          {inProgressAttempt && (
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-[#111827] mb-4">Continue Where You Left Off</h2>
+              <div className="bg-white rounded-xl p-6 shadow-edu-sm hover:shadow-edu-md transition-default cursor-pointer">
+                <div className="flex items-center gap-6">
+                  <div className="w-16 h-16 bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Target className="w-8 h-8 text-white" />
                   </div>
-                  <p className="text-sm text-[#6B7280] mb-4">
-                    Learn about the establishment and development of Islamic civilization in Madinah
-                  </p>
-                  <div className="mb-4">
-                    <div className="flex justify-between text-xs text-[#6B7280] mb-2">
-                      <span>Progress</span>
-                      <span>65%</span>
-                    </div>
-                    <Progress value={65} className="h-2" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-[#111827]">
+                      {inProgressAttempt.quizTitle ?? 'Sejarah Quiz'}
+                    </p>
+                    <p className="text-xs text-[#9CA3AF]">
+                      Started {timeAgo(inProgressAttempt.startedAt)}
+                    </p>
                   </div>
                   <Button
-                    onClick={() => onNavigate('topic-content', { topicId: 'tamadun-islam' })}
+                    onClick={() => onNavigate('quiz-in-progress', { attemptId: String(inProgressAttempt.attemptId) })}
                     className="bg-[#1E3A8A] hover:bg-[#1E40AF] text-white"
                   >
-                    Continue Learning
+                    Resume Quiz
                   </Button>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Quick Actions Grid */}
           <div className="mb-8">
@@ -237,67 +231,122 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Recent Activity */}
+            {/* Recent Quiz Activity */}
             <div>
-              <h2 className="text-xl font-bold text-[#111827] mb-4">Recent Activity</h2>
+              <h2 className="text-xl font-bold text-[#111827] mb-4">Recent Quiz Activity</h2>
               <div className="bg-white rounded-xl p-6 shadow-edu-sm">
-                <div className="space-y-4">
-                  {recentActivities.map((activity, index) => {
-                    const Icon = activity.icon;
-                    return (
-                      <div key={index} className="flex items-start gap-3">
+                {recentSubmissions.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Target className="w-10 h-10 text-[#D1D5DB] mx-auto mb-3" />
+                    <p className="text-sm text-[#6B7280]">No quizzes completed yet.</p>
+                    <button
+                      onClick={() => onNavigate('quiz-selection')}
+                      className="mt-3 text-sm text-[#1E3A8A] font-medium hover:underline"
+                    >
+                      Take your first quiz →
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {recentSubmissions.map((attempt) => {
+                      const pct =
+                        attempt.score != null && attempt.maxScore && attempt.maxScore > 0
+                          ? Math.round((attempt.score / attempt.maxScore) * 100)
+                          : null;
+                      const color = pct == null ? '#6B7280' : pct >= 70 ? '#059669' : '#DC2626';
+                      return (
                         <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: `${activity.iconColor}20` }}
+                          key={attempt.attemptId}
+                          className="flex items-start gap-3 cursor-pointer hover:bg-[#F9FAFB] rounded-lg p-2 -mx-2 transition-default"
+                          onClick={() =>
+                            onNavigate('quiz-results', {
+                              attemptId: String(attempt.attemptId),
+                              quizId: String(attempt.quizId),
+                            })
+                          }
                         >
-                          <Icon className="w-4 h-4" style={{ color: activity.iconColor }} />
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: `${color}20` }}
+                          >
+                            <CheckCircle className="w-4 h-4" style={{ color }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-[#111827] truncate">
+                              {attempt.quizTitle ?? 'Sejarah Quiz'}
+                              {pct != null && (
+                                <span
+                                  className="ml-2 px-2 py-0.5 rounded text-xs font-bold"
+                                  style={{ backgroundColor: `${color}20`, color }}
+                                >
+                                  {pct}%
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-[#6B7280] mt-0.5 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {attempt.submittedAt ? timeAgo(attempt.submittedAt) : '—'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-[#111827]">{activity.title}</p>
-                          <p className="text-xs text-[#6B7280] mt-0.5 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {activity.time}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Recommended Topics */}
+            {/* Chapters to Explore */}
             <div>
-              <h2 className="text-xl font-bold text-[#111827] mb-4">Recommended for You</h2>
-              <div className="space-y-4">
-                {recommendedTopics.map((topic) => (
-                  <div
-                    key={topic.id}
-                    className="bg-white rounded-xl p-4 shadow-edu-sm hover:shadow-edu-md transition-default cursor-pointer"
-                    onClick={() => onNavigate('topic-content', { topicId: topic.id })}
-                  >
-                    <div className="flex items-start gap-4">
-                      <div
-                        className="w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: topic.thumbnail }}
-                      >
-                        <BookOpen className="w-8 h-8 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-bold text-[#111827] mb-1">{topic.title}</h3>
-                        <p className="text-xs text-[#6B7280] mb-3">{topic.chapter}</p>
-                        <div>
-                          <div className="flex justify-between text-xs text-[#6B7280] mb-1">
-                            <span>{topic.progress === 0 ? 'Not Started' : 'In Progress'}</span>
-                            <span>{topic.progress}%</span>
-                          </div>
-                          <Progress value={topic.progress} className="h-1.5" />
+              <h2 className="text-xl font-bold text-[#111827] mb-4">
+                {suggestedChapters.length > 0 ? 'Chapters to Explore' : 'Your Progress by Chapter'}
+              </h2>
+              {suggestedChapters.length > 0 ? (
+                <div className="space-y-4">
+                  {suggestedChapters.map((chapter, i) => (
+                    <div
+                      key={`${chapter.formLevel}-${chapter.chapterId}`}
+                      className="bg-white rounded-xl p-4 shadow-edu-sm hover:shadow-edu-md transition-default cursor-pointer"
+                      onClick={() =>
+                        onNavigate('topics', {
+                          formLevel: String(chapter.formLevel),
+                          chapterId: String(chapter.chapterId),
+                        })
+                      }
+                    >
+                      <div className="flex items-start gap-4">
+                        <div
+                          className="w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: thumbnailColors[i % thumbnailColors.length] }}
+                        >
+                          <BookOpen className="w-8 h-8 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-[#111827] mb-1">{chapter.chapterName}</h3>
+                          <p className="text-xs text-[#6B7280] mb-2">
+                            Bab {chapter.chapterId} — Form {chapter.formLevel}
+                          </p>
+                          <p className="text-xs text-[#6B7280]">
+                            {chapter.totalTopics} topic{chapter.totalTopics === 1 ? '' : 's'} · Not started
+                          </p>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl p-6 shadow-edu-sm">
+                  <p className="text-sm text-[#059669] font-medium mb-2">
+                    Great work! You've started every chapter.
+                  </p>
+                  <button
+                    onClick={() => onNavigate('progress')}
+                    className="text-sm text-[#1E3A8A] hover:underline"
+                  >
+                    View full progress →
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

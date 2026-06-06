@@ -28,7 +28,6 @@ export function QuizInProgress({
   const [error, setError] = useState<string | null>(null);
 
   // ---------- Streaming state ----------
-  //const [streamStatus, setStreamStatus] = useState
   const [streamStatus, setStreamStatus] = useState<'idle' | 'streaming' | 'done' | 'failed'>('idle');
   const [streamMessage, setStreamMessage] = useState<string | null>(null);
   const streamCtrlRef = useRef<AbortController | null>(null);
