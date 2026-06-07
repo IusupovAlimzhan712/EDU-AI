@@ -176,6 +176,15 @@ export interface Chapter {
   chapterName: string;
 }
 
+export interface CauseEffectDiagram {
+  diagramId: number;
+  formLevel: number;
+  chapterId: number;
+  title: string;
+  mermaidSource: string;
+  generatedAt: string;
+}
+
 export interface TopicSummary {
   topicId: number;
   formLevel: number;
@@ -485,6 +494,9 @@ export const api = {
 
   getTopic: (topicId: number) =>
     request<TopicDetail>(`/topics/${topicId}`),
+
+  getCauseEffectDiagram: (formLevel: number, chapterId: number) =>
+    request<CauseEffectDiagram>(`/chapters/${formLevel}/${chapterId}/cause-effect`),
 
   bookmark: (topicId: number) =>
     request<{ message: string }>(`/topics/${topicId}/bookmark`, { method: 'POST' }),

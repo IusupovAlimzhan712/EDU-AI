@@ -10,7 +10,8 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import { Button } from '../components/ui/button';
 import { MarkdownMessage } from '../components/MarkdownMessage';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
-import { api, TopicDetail, TopicSummary, ChatMessage, APIError } from '../lib/api';
+import { MermaidDiagram } from '../components/MermaidDiagram';
+import { api, TopicDetail, TopicSummary, ChatMessage, APIError, CauseEffectDiagram } from '../lib/api';
 
 pdfjs.GlobalWorkerOptions.workerSrc =
   `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
@@ -50,6 +51,13 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
   const streamingRef = useRef<string>(''); // mirrors streamingText for abort handler
 
   const id = topicId ? parseInt(topicId, 10) : null;
+
+  // ── Cause-Effect Diagram ──────────────────────────────────────────────
+  type ViewTab = 'pdf' | 'diagram';
+  const [activeTab, setActiveTab] = useState<ViewTab>('pdf');
+  const [diagram, setDiagram] = useState<CauseEffectDiagram | null>(null);
+  const [diagramLoading, setDiagramLoading] = useState(false);
+  const [diagramError, setDiagramError] = useState<string | null>(null);
 
   // ── Resize drag ───────────────────────────────────────────────────────
   const isResizing = useRef(false);
@@ -114,6 +122,23 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
           const conv = await api.getConversation(t.topicId);
           if (!cancelled) setMessages(conv.messages || []);
         } catch { /* empty conv is fine */ }
+
+        // Load cause-effect diagram for this chapter
+        setDiagramLoading(true);
+        try {
+          const diag = await api.getCauseEffectDiagram(t.formLevel, t.chapterId);
+          if (!cancelled) setDiagram(diag);
+        } catch (e) {
+          if (!cancelled) {
+            setDiagramError(
+              e instanceof APIError && e.status === 404
+                ? 'Diagram belum dijana untuk bab ini.'
+                : 'Gagal memuatkan diagram.'
+            );
+          }
+        } finally {
+          if (!cancelled) setDiagramLoading(false);
+        }
       })
       .catch((err) => {
         if (!cancelled)
@@ -393,47 +418,106 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
           </button>
         </div>
 
+        {/* Tab bar */}
+        <div className="bg-white border-b border-[#E5E7EB] px-6 flex gap-1 flex-shrink-0">
+          <button
+            onClick={() => setActiveTab('pdf')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'pdf'
+                ? 'border-[#1E3A8A] text-[#1E3A8A]'
+                : 'border-transparent text-[#6B7280] hover:text-[#374151]'
+            }`}
+          >
+            Kandungan PDF
+          </button>
+          <button
+            onClick={() => setActiveTab('diagram')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'diagram'
+                ? 'border-[#1E3A8A] text-[#1E3A8A]'
+                : 'border-transparent text-[#6B7280] hover:text-[#374151]'
+            }`}
+          >
+            Sebab &amp; Akibat
+          </button>
+        </div>
+
         {/* PDF + Chat row */}
         <div className="flex-1 flex overflow-hidden">
 
-          {/* PDF viewer */}
+          {/* PDF viewer / Diagram panel */}
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             <div className="flex-1 overflow-auto bg-[#F3F4F6] p-6 flex justify-center">
-              {isLoading ? (
-                <div className="text-[#6B7280] mt-12">Loading topic…</div>
-              ) : error ? (
-                <div className="p-6 rounded-lg bg-[#FEE2E2] border border-[#DC2626]/20 text-[#991B1B] max-w-xl h-fit">
-                  {error}
+
+              {/* ── Cause-Effect Diagram tab ─────────────────────────── */}
+              {activeTab === 'diagram' ? (
+                <div className="w-full max-w-3xl">
+                  {diagramLoading ? (
+                    <div className="text-[#6B7280] mt-12 text-center">Memuatkan diagram…</div>
+                  ) : diagramError ? (
+                    <div className="bg-white rounded-xl shadow-edu-sm p-8 text-center">
+                      <p className="text-[#6B7280] text-sm">{diagramError}</p>
+                    </div>
+                  ) : diagram ? (
+                    <div className="bg-white rounded-xl shadow-edu-sm p-6">
+                      <h2 className="text-lg font-bold text-[#111827] mb-2">{diagram.title}</h2>
+                      <div className="flex gap-4 text-xs mb-6">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-sm bg-[#EFF6FF] border border-[#3B82F6] inline-block" />
+                          <span className="text-[#6B7280]">Sebab (Causes)</span>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-sm bg-[#1E3A8A] inline-block" />
+                          <span className="text-[#6B7280]">Peristiwa Utama</span>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-sm bg-[#D1FAE5] border border-[#059669] inline-block" />
+                          <span className="text-[#6B7280]">Akibat (Effects)</span>
+                        </span>
+                      </div>
+                      <MermaidDiagram source={diagram.mermaidSource} className="min-h-[200px]" />
+                    </div>
+                  ) : null}
                 </div>
-              ) : !topic?.hasPdf || !pdfUrl ? (
-                <div className="bg-white rounded-xl shadow-edu-sm p-8 max-w-md h-fit text-center">
-                  <FileWarning className="w-10 h-10 text-[#F59E0B] mx-auto mb-3" />
-                  <p className="font-bold text-[#111827] mb-1">No PDF available yet</p>
-                  <p className="text-sm text-[#6B7280]">
-                    Drop a PDF into <code>backend/static/pdfs/</code> and run{' '}
-                    <code>python -m scripts.ingest_pdf</code>.
-                  </p>
-                </div>
+
               ) : (
-                <div className="bg-white shadow-edu-md">
-                  <Document
-                    file={pdfUrl}
-                    onLoadSuccess={({ numPages: n }) => { setNumPages(n); setCurrentPage(1); }}
-                    onLoadError={(err) => setError(`Failed to render PDF: ${err.message}`)}
-                    loading={<div className="p-12 text-[#6B7280]">Rendering PDF…</div>}
-                  >
-                    <Page
-                      pageNumber={currentPage}
-                      scale={scale}
-                      renderTextLayer
-                      renderAnnotationLayer={false}
-                    />
-                  </Document>
-                </div>
+                /* ── PDF tab ─────────────────────────────────────────── */
+                isLoading ? (
+                  <div className="text-[#6B7280] mt-12">Loading topic…</div>
+                ) : error ? (
+                  <div className="p-6 rounded-lg bg-[#FEE2E2] border border-[#DC2626]/20 text-[#991B1B] max-w-xl h-fit">
+                    {error}
+                  </div>
+                ) : !topic?.hasPdf || !pdfUrl ? (
+                  <div className="bg-white rounded-xl shadow-edu-sm p-8 max-w-md h-fit text-center">
+                    <FileWarning className="w-10 h-10 text-[#F59E0B] mx-auto mb-3" />
+                    <p className="font-bold text-[#111827] mb-1">No PDF available yet</p>
+                    <p className="text-sm text-[#6B7280]">
+                      Drop a PDF into <code>backend/static/pdfs/</code> and run{' '}
+                      <code>python -m scripts.ingest_pdf</code>.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-white shadow-edu-md">
+                    <Document
+                      file={pdfUrl}
+                      onLoadSuccess={({ numPages: n }) => { setNumPages(n); setCurrentPage(1); }}
+                      onLoadError={(err) => setError(`Failed to render PDF: ${err.message}`)}
+                      loading={<div className="p-12 text-[#6B7280]">Rendering PDF…</div>}
+                    >
+                      <Page
+                        pageNumber={currentPage}
+                        scale={scale}
+                        renderTextLayer
+                        renderAnnotationLayer={false}
+                      />
+                    </Document>
+                  </div>
+                )
               )}
             </div>
 
-            {topic?.hasPdf && pdfUrl && (
+            {activeTab === 'pdf' && topic?.hasPdf && pdfUrl && (
               <div className="bg-white border-t border-[#E5E7EB] px-6 py-3 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="ghost"

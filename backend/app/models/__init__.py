@@ -17,6 +17,7 @@ from .chat_conversation import ChatConversation
 from .chat_message import ChatMessage
 from .essay_question import EssayQuestion
 from .essay_attempt import EssayAttempt
+from .cause_effect_diagram import CauseEffectDiagram
 
 __all__ = [
     'Student', 'Session', 'LearningProgress',
@@ -25,4 +26,5 @@ __all__ = [
     'Quiz', 'QuizAttempt', 'AttemptQuestion', 'AttemptAnswer',
     'ChatConversation', 'ChatMessage',
     'EssayQuestion', 'EssayAttempt',
+    'CauseEffectDiagram',
 ]

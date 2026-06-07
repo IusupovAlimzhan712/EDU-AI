@@ -1,36 +1,27 @@
 """
 Topic & Chapter routes.
 
-  GET    /api/chapters                       -> list all chapters
-  GET    /api/chapters?form_level=4          -> chapters for a form
-  GET    /api/topics                         -> list topics (with status)
-  GET    /api/topics/<id>                    -> topic detail (with status)
-  POST   /api/topics/<id>/bookmark           -> bookmark
-  DELETE /api/topics/<id>/bookmark           -> unbookmark
-  POST   /api/topics/<id>/complete           -> mark complete
-  DELETE /api/topics/<id>/complete           -> unmark complete
-  GET    /api/topics/<id>/pdf                -> stream PDF (Step 2)
-  GET    /api/topics/<id>/pages/<n>          -> page text (Step 2, for Phase 3 AI)
+  GET    /api/chapters                               -> list all chapters
+  GET    /api/chapters?form_level=4                  -> chapters for a form
+  GET    /api/chapters/<fl>/<ch>/cause-effect        -> cause-effect diagram
+  GET    /api/topics                                 -> list topics (with status)
+  GET    /api/topics/<id>                            -> topic detail (with status)
+  POST   /api/topics/<id>/bookmark                   -> bookmark
+  DELETE /api/topics/<id>/bookmark                   -> unbookmark
+  POST   /api/topics/<id>/complete                   -> mark complete
+  DELETE /api/topics/<id>/complete                   -> unmark complete
+  GET    /api/topics/<id>/pdf                        -> stream PDF (Step 2)
+  GET    /api/topics/<id>/pages/<n>                  -> page text (Step 2, for Phase 3 AI)
 """
 from flask import Blueprint, request, jsonify, send_file
 
 from ..services import TopicService
-from ..utils.errors import BadRequestError
+from ..models import CauseEffectDiagram
+from ..extensions import db
 from ._decorators import auth_required, current_student_id
+from ._utils import _int_arg
 
 topics_bp = Blueprint('topics', __name__)
-
-
-# ---------- Helpers ----------
-
-def _int_arg(name):
-    raw = request.args.get(name)
-    if raw is None or raw == '':
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        raise BadRequestError(f'Query parameter `{name}` must be an integer.')
 
 
 # ---------- Chapters ----------
@@ -41,6 +32,17 @@ def list_chapters():
     form_level = _int_arg('form_level')
     chapters = TopicService.list_chapters(form_level)
     return jsonify([c.to_dict() for c in chapters]), 200
+
+
+@topics_bp.get('/chapters/<int:form_level>/<int:chapter_id>/cause-effect')
+@auth_required
+def get_cause_effect(form_level, chapter_id):
+    diagram = db.session.query(CauseEffectDiagram).filter_by(
+        form_level=form_level, chapter_id=chapter_id
+    ).first()
+    if not diagram:
+        return jsonify({'error': 'Not Found', 'message': 'Diagram not yet generated for this chapter.'}), 404
+    return jsonify(diagram.to_dict()), 200
 
 
 # ---------- Topics ----------

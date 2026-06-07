@@ -112,7 +112,9 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
       if (onLogout) onLogout();
     } catch (err) {
       setPwdError(
-        err instanceof APIError ? err.message : 'Failed to change password.'
+        err instanceof APIError
+          ? (err.data?.errors?.password ?? err.message)
+          : 'Failed to change password.'
       );
     } finally {
       setPwdSaving(false);
@@ -239,7 +241,7 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
             </div>
 
             <p className="text-sm text-[#6B7280]">
-              Notification preferences <span className="text-[#9CA3AF]">(coming soon)</span>
+              In-app and email notifications are identified as future work for EduAI. Planned notifications include study reminders, quiz result summaries, and essay grading completion alerts.
             </p>
           </div>
 
@@ -397,7 +399,7 @@ export function Settings({ onNavigate, onLogout }: SettingsProps) {
 
               <Button variant="outline" className="w-full justify-start" disabled>
                 <Download className="w-4 h-4 mr-2" />
-                Download My Data <span className="ml-2 text-xs text-[#9CA3AF]">(coming soon)</span>
+                Download My Data <span className="ml-2 text-xs text-[#9CA3AF]">(future work)</span>
               </Button>
 
               <Button
