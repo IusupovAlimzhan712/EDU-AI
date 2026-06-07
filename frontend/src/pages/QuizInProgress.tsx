@@ -244,8 +244,8 @@ export function QuizInProgress({
             {streamMessage ?? 'The AI was unable to produce questions for this quiz.'}
           </p>
           <p className="text-xs text-[#9CA3AF] mb-4">
-            Common cause: Ollama is not running, or the PDF for this chapter has
-            no extracted text. Check the backend logs.
+            Common cause: the PDF for this chapter has no extracted text, or
+            the OpenAI API key is missing. Check the backend logs.
           </p>
           <Button onClick={() => onNavigate('quiz-selection')}>Back to Quizzes</Button>
         </div>
