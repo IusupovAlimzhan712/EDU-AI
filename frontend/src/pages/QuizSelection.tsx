@@ -69,7 +69,7 @@ function QuizCard({ quiz, isMega, startingId, questionsPerQuiz, onStartOrResume 
             className="text-xs px-2 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280]"
             title={`Questions reset every ${quiz.cycleSize} attempts to keep variety fresh`}
           >
-            Cycle {quiz.cycleNumber + 1} · {quiz.attemptsInCycle}/{quiz.cycleSize}
+            {quiz.attemptsInCycle}/{quiz.cycleSize}
           </span>
         )}
       </div>
