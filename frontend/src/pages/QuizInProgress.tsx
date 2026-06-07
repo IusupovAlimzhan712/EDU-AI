@@ -203,8 +203,9 @@ export function QuizInProgress({
   const streamProgress = target > 0 ? Math.round((questions.length / target) * 100) : 0;
   const isStreaming = streamStatus === 'streaming';
   const hasAtLeastOne = questions.length > 0;
-  const canSubmit =
-    streamStatus !== 'streaming' && questions.length > 0;
+  const allAnswered = questions.length > 0 && answeredCount === questions.length;
+  const canSubmit = !isStreaming && allAnswered;
+  const isLastQuestion = !isStreaming && questions.length > 0 && currentIdx === questions.length - 1;
 
   // ----- Loading the attempt itself -----
   if (isLoadingAttempt) {
@@ -309,15 +310,6 @@ export function QuizInProgress({
               ` (${target - questions.length} skipped)`}
           </p>
         </div>
-        <Button
-          onClick={() => setShowSubmitConfirm(true)}
-          disabled={!canSubmit || submitting}
-          className="bg-[#059669] hover:bg-[#047857] text-white disabled:opacity-50"
-          title={isStreaming ? 'Wait for generation to finish before submitting' : undefined}
-        >
-          <Check className="w-4 h-4 mr-2" />
-          Submit
-        </Button>
       </div>
 
       {/* Streaming progress bar */}
@@ -462,21 +454,32 @@ export function QuizInProgress({
                 <ChevronLeft className="w-4 h-4 mr-1" />
                 Previous
               </Button>
-              <Button
-                onClick={() =>
-                  setCurrentIdx((i) => Math.min(questions.length - 1, i + 1))
-                }
-                disabled={currentIdx === questions.length - 1}
-              >
-                Next
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
+
+              {isLastQuestion ? (
+                <Button
+                  onClick={() => setShowSubmitConfirm(true)}
+                  disabled={!canSubmit || submitting}
+                  className="bg-[#059669] hover:bg-[#047857] text-white disabled:opacity-50"
+                  title={!allAnswered ? `Answer all ${questions.length} questions before submitting` : undefined}
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  Submit Quiz
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => setCurrentIdx((i) => Math.min(questions.length - 1, i + 1))}
+                  disabled={isStreaming && currentIdx === questions.length - 1}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              )}
             </div>
 
             {streamStatus === 'failed' && hasAtLeastOne && (
               <div className="mt-4 p-3 rounded-lg bg-[#FEE2E2] border border-[#DC2626]/20 text-sm text-[#991B1B]">
-                {streamMessage ?? 'Some questions failed to generate.'} You can still
-                submit with the {questions.length} questions you have.
+                {streamMessage ?? 'Some questions failed to generate.'} Answer all{' '}
+                {questions.length} questions to submit.
               </div>
             )}
           </div>
@@ -489,17 +492,12 @@ export function QuizInProgress({
           <div className="bg-white rounded-xl shadow-edu-xl p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-[#111827] mb-2">Submit quiz?</h3>
             <p className="text-[#6B7280] mb-4">
-              You've answered <span className="font-semibold">{answeredCount}</span> of{' '}
-              <span className="font-semibold">{questions.length}</span> questions.
-              {answeredCount < questions.length && (
-                <span className="block mt-2 text-[#F59E0B]">
-                  Unanswered questions will be marked incorrect.
-                </span>
-              )}
+              You've answered all <span className="font-semibold">{questions.length}</span> questions.
+              Once submitted you cannot change your answers.
             </p>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setShowSubmitConfirm(false)}>
-                Keep answering
+                Review answers
               </Button>
               <Button
                 onClick={handleSubmit}
