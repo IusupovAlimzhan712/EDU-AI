@@ -251,6 +251,10 @@ export interface QuizSummary {
   attemptCount: number;
   bestScore: number | null;
   bestPercentage: number | null;
+  // Cycle-based history reset — generator starts fresh every cycleSize attempts
+  cycleNumber: number;        // which cycle (0, 1, 2…)
+  attemptsInCycle: number;    // how many submitted attempts in the current cycle
+  cycleSize: number;          // threshold before reset (default 10)
 }
 
 export interface QuizQuestionView {

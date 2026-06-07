@@ -27,6 +27,14 @@ from .ai.quiz_difficulty_classifier import classify_difficulty
 _MAX_SAMPLE_PAGES = 12
 _MAX_CONTEXT_CHARS = 7500
 
+# Cycle-based history reset.
+# After _CYCLE_SIZE submitted attempts on the same quiz, historical_stems
+# resets to empty so the generator gets a clean slate.  Within a cycle only
+# the _HISTORY_CAP most recent submitted attempts are used for dedup.
+# Adjust _CYCLE_SIZE after real-world testing reveals where quality plateaus.
+_CYCLE_SIZE = 10
+_HISTORY_CAP = 2
+
 
 def _stratified_context(pages: list) -> str:
     """Sample pages evenly across the chapter and join them into context.
@@ -84,14 +92,19 @@ class QuizService:
             best = max(submitted, key=lambda a: (a.score or 0), default=None)
 
             d = q.to_summary_dict()
+            submitted_count = len(submitted)
             d['hasInProgressAttempt'] = in_progress is not None
             d['inProgressAttemptId'] = in_progress.attempt_id if in_progress else None
-            d['attemptCount'] = len(submitted)
+            d['attemptCount'] = submitted_count
             d['bestScore'] = best.score if best else None
             d['bestPercentage'] = (
                 round((best.score / best.max_score) * 100, 2)
                 if best and best.max_score else None
             )
+            # Cycle progress — lets the frontend show "Cycle 1 · 3/10"
+            d['cycleNumber'] = submitted_count // _CYCLE_SIZE
+            d['attemptsInCycle'] = submitted_count % _CYCLE_SIZE
+            d['cycleSize'] = _CYCLE_SIZE
             result.append(d)
         return result
 
@@ -207,26 +220,34 @@ class QuizService:
 
         context = _stratified_context(pages)
 
-        # Collect stems from recent *submitted* attempts on this quiz so the
-        # generator avoids near-duplicates without exhausting its budget.
+        # Cycle-aware historical stems.
         #
-        # Two intentional restrictions:
-        #   1. submitted only — abandoned / failed / in-progress attempts are
-        #      excluded so their questions don't permanently pollute the history.
-        #   2. capped at the 2 most recent — without a cap the list grows by
-        #      ~10 stems per attempt and the fixed budget (num_q × multiplier)
-        #      gets exhausted before enough unique questions are produced.
-        #      2 attempts = up to 20 stems, enough to block exact repeats while
-        #      leaving room for fresh angles in subsequent attempts.
-        _HISTORY_CAP = 2
+        # The generator compares every candidate question against historical_stems
+        # to avoid near-duplicates across attempts.  Without a reset the list
+        # grows indefinitely and the fixed budget is exhausted before 10 unique
+        # questions can be produced.
+        #
+        # Strategy:
+        #   - Only submitted attempts count (abandoned / failed ones are excluded).
+        #   - Attempts are grouped into cycles of _CYCLE_SIZE (default 10).
+        #   - At the start of a new cycle, historical_stems resets to [] so the
+        #     generator sees a clean slate and can revisit the chapter's fact space.
+        #   - Within a cycle, only the _HISTORY_CAP (2) most recent attempts are
+        #     used — enough to block exact repeats without exhausting the budget.
         all_quiz_attempts = QuizAttemptRepository.list_for_student(student_id, quiz_id=quiz.quiz_id)
-        recent_submitted = [
+        submitted_attempts = [
             a for a in all_quiz_attempts
             if a.attempt_id != attempt_id and a.status == 'submitted'
-        ][:_HISTORY_CAP]
+        ]  # ordered newest-first by list_for_student
+
+        total_prior = len(submitted_attempts)
+        position_in_cycle = total_prior % _CYCLE_SIZE   # 0 → first attempt in a fresh cycle
+        cycle_attempts = submitted_attempts[:position_in_cycle]  # only within current cycle
+        recent_in_cycle = cycle_attempts[:_HISTORY_CAP]
+
         historical_stems = [
             pq.stem
-            for prev in recent_submitted
+            for prev in recent_in_cycle
             for pq in prev.attempt_questions
             if pq.stem
         ]

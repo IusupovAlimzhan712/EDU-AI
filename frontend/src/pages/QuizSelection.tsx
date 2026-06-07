@@ -8,6 +8,110 @@ import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth } from '../context/AuthContext';
 import { api, QuizSummary, APIError } from '../lib/api';
 
+interface QuizCardProps {
+  quiz: QuizSummary;
+  isMega?: boolean;
+  startingId: number | null;
+  questionsPerQuiz: number | null | undefined;
+  onStartOrResume: (quiz: QuizSummary) => void;
+}
+
+function QuizCard({ quiz, isMega, startingId, questionsPerQuiz, onStartOrResume }: QuizCardProps) {
+  const inProgress = quiz.hasInProgressAttempt;
+  const completed = (quiz.attemptCount ?? 0) > 0;
+  const isStarting = startingId === quiz.quizId;
+
+  return (
+    <div
+      className={`bg-white rounded-xl shadow-edu-sm p-5 ${
+        isMega ? 'border-2 border-[#7C3AED]/30' : ''
+      }`}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            {isMega && (
+              <span className="px-2 py-0.5 text-xs font-bold text-[#7C3AED] bg-[#EDE9FE] rounded">
+                MEGA
+              </span>
+            )}
+            <span className="px-2 py-0.5 text-xs text-[#1E3A8A] bg-[#DBEAFE] rounded flex items-center gap-1">
+              <Sparkles className="w-3 h-3" /> AI-generated
+            </span>
+            {inProgress && (
+              <span className="px-2 py-0.5 text-xs text-[#F59E0B] bg-[#FEF3C7] rounded flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Resume
+              </span>
+            )}
+          </div>
+          <h3 className="font-bold text-[#111827] leading-tight">{quiz.title}</h3>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4 text-sm text-[#6B7280] mb-4 flex-wrap">
+        <span className="flex items-center gap-1">
+          <ClipboardList className="w-4 h-4" />
+          {questionsPerQuiz ?? quiz.defaultQuestionCount} questions per attempt
+        </span>
+        {completed && (
+          <span className="text-[#059669]">
+            {quiz.attemptCount} {quiz.attemptCount === 1 ? 'attempt' : 'attempts'}
+          </span>
+        )}
+        {quiz.bestPercentage !== null && (
+          <span className="flex items-center gap-1 text-[#F59E0B]">
+            <Trophy className="w-4 h-4" />
+            Best: {quiz.bestPercentage}%
+          </span>
+        )}
+        {completed && (
+          <span
+            className="text-xs px-2 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280]"
+            title={`Questions reset every ${quiz.cycleSize} attempts to keep variety fresh`}
+          >
+            Cycle {quiz.cycleNumber + 1} · {quiz.attemptsInCycle}/{quiz.cycleSize}
+          </span>
+        )}
+      </div>
+
+      <Button
+        onClick={() => onStartOrResume(quiz)}
+        disabled={isStarting}
+        className={`w-full ${
+          isMega
+            ? 'bg-[#7C3AED] hover:bg-[#6D28D9]'
+            : 'bg-[#1E3A8A] hover:bg-[#1E40AF]'
+        } text-white`}
+      >
+        {isStarting ? (
+          'Starting…'
+        ) : inProgress ? (
+          <>
+            <RotateCw className="w-4 h-4 mr-2" />
+            Resume Quiz
+          </>
+        ) : completed ? (
+          <>
+            <Sparkles className="w-4 h-4 mr-2" />
+            Generate New Quiz
+          </>
+        ) : (
+          <>
+            <Play className="w-4 h-4 mr-2" />
+            Generate Quiz
+          </>
+        )}
+      </Button>
+
+      {!inProgress && !completed && (
+        <p className="text-xs text-[#6B7280] mt-2 text-center">
+          Questions generated fresh by AI from the KSSM textbook.
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface QuizSelectionProps {
   onNavigate: (page: any, params?: any) => void;
 }
@@ -66,95 +170,6 @@ export function QuizSelection({ onNavigate }: QuizSelectionProps) {
     }
   };
 
-  // ---------- Card ----------
-  const QuizCard = ({ quiz, isMega }: { quiz: QuizSummary; isMega?: boolean }) => {
-    const inProgress = quiz.hasInProgressAttempt;
-    const completed = (quiz.attemptCount ?? 0) > 0;
-    const isStarting = startingId === quiz.quizId;
-
-    return (
-      <div
-        className={`bg-white rounded-xl shadow-edu-sm p-5 ${
-          isMega ? 'border-2 border-[#7C3AED]/30' : ''
-        }`}
-      >
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              {isMega && (
-                <span className="px-2 py-0.5 text-xs font-bold text-[#7C3AED] bg-[#EDE9FE] rounded">
-                  MEGA
-                </span>
-              )}
-              <span className="px-2 py-0.5 text-xs text-[#1E3A8A] bg-[#DBEAFE] rounded flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> AI-generated
-              </span>
-              {inProgress && (
-                <span className="px-2 py-0.5 text-xs text-[#F59E0B] bg-[#FEF3C7] rounded flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Resume
-                </span>
-              )}
-            </div>
-            <h3 className="font-bold text-[#111827] leading-tight">{quiz.title}</h3>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 text-sm text-[#6B7280] mb-4 flex-wrap">
-          <span className="flex items-center gap-1">
-            <ClipboardList className="w-4 h-4" />
-            {quiz.defaultQuestionCount} questions per attempt
-          </span>
-          {completed && (
-            <span className="text-[#059669]">
-              {quiz.attemptCount} {quiz.attemptCount === 1 ? 'attempt' : 'attempts'}
-            </span>
-          )}
-          {quiz.bestPercentage !== null && (
-            <span className="flex items-center gap-1 text-[#F59E0B]">
-              <Trophy className="w-4 h-4" />
-              Best: {quiz.bestPercentage}%
-            </span>
-          )}
-        </div>
-
-        <Button
-          onClick={() => handleStartOrResume(quiz)}
-          disabled={isStarting}
-          className={`w-full ${
-            isMega
-              ? 'bg-[#7C3AED] hover:bg-[#6D28D9]'
-              : 'bg-[#1E3A8A] hover:bg-[#1E40AF]'
-          } text-white`}
-        >
-          {isStarting ? (
-            'Starting…'
-          ) : inProgress ? (
-            <>
-              <RotateCw className="w-4 h-4 mr-2" />
-              Resume Quiz
-            </>
-          ) : completed ? (
-            <>
-              <Sparkles className="w-4 h-4 mr-2" />
-              Generate New Quiz
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4 mr-2" />
-              Generate Quiz
-            </>
-          )}
-        </Button>
-
-        {!inProgress && !completed && (
-          <p className="text-xs text-[#6B7280] mt-2 text-center">
-            Questions generated fresh by AI from the KSSM textbook.
-          </p>
-        )}
-      </div>
-    );
-  };
-
   return (
     <div className="flex h-screen bg-[#F9FAFB]">
       <AppSidebar currentPage="quiz-selection" onNavigate={onNavigate} />
@@ -188,7 +203,7 @@ export function QuizSelection({ onNavigate }: QuizSelectionProps) {
                     <h2 className="text-sm font-semibold text-[#6B7280] uppercase tracking-wide mb-3">
                       Full-Form Mega Quiz
                     </h2>
-                    <QuizCard quiz={megaQuiz} isMega />
+                    <QuizCard quiz={megaQuiz} isMega startingId={startingId} questionsPerQuiz={student?.questionsPerQuiz} onStartOrResume={handleStartOrResume} />
                   </div>
                 )}
 
@@ -197,7 +212,7 @@ export function QuizSelection({ onNavigate }: QuizSelectionProps) {
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {babQuizzes.map((q) => (
-                    <QuizCard key={q.quizId} quiz={q} />
+                    <QuizCard key={q.quizId} quiz={q} startingId={startingId} questionsPerQuiz={student?.questionsPerQuiz} onStartOrResume={handleStartOrResume} />
                   ))}
                 </div>
               </>
