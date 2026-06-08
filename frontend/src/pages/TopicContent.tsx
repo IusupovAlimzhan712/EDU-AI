@@ -94,6 +94,9 @@ export function TopicContent({ onNavigate, topicId }: TopicContentProps) {
     setError(null);
     setPdfUrl(null);
     setMessages([]);
+    setStreamingText(null);
+    setIsSending(false);
+    streamingRef.current = '';
 
     api.getTopic(id)
       .then(async (t) => {

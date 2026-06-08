@@ -15,8 +15,9 @@ from ..repositories import (
     QuizAttemptRepository,
     AttemptQuestionRepository,
     TopicPageRepository,
+    TopicRepository,
+    LearningProgressRepository,
     StudentRepository,
-    ChapterRepository,
 )
 from ..utils.errors import NotFoundError, ForbiddenError, ValidationError
 from .ai import LlmQuestionGenerator
@@ -82,6 +83,32 @@ class QuizService:
         for a in all_attempts:
             by_quiz.setdefault(a.quiz_id, []).append(a)
 
+        # Build chapter completion map for lock calculation.
+        # Two queries regardless of quiz count: one for topic totals,
+        # one for completed counts.  Both are indexed and fast.
+        all_topics = TopicRepository.list_filtered(form_level=form_level)
+        progress = LearningProgressRepository.get_by_student_id(student_id)
+        completed_ids: set[int] = set()
+        if progress:
+            completed_ids = set(
+                LearningProgressRepository.list_completed_topic_ids(progress.progress_id)
+            )
+
+        chapter_totals: dict[tuple, int] = {}
+        chapter_completed: dict[tuple, int] = {}
+        for t in all_topics:
+            key = (t.form_level, t.chapter_id)
+            chapter_totals[key] = chapter_totals.get(key, 0) + 1
+            if t.topic_id in completed_ids:
+                chapter_completed[key] = chapter_completed.get(key, 0) + 1
+
+        def _is_locked(quiz: Quiz) -> bool:
+            total = chapter_totals.get((quiz.form_level, quiz.chapter_id), 0)
+            if total == 0:
+                return True
+            done = chapter_completed.get((quiz.form_level, quiz.chapter_id), 0)
+            return done < total
+
         result = []
         for q in quizzes:
             attempts = by_quiz.get(q.quiz_id, [])
@@ -93,18 +120,23 @@ class QuizService:
 
             d = q.to_summary_dict()
             submitted_count = len(submitted)
-            d['hasInProgressAttempt'] = in_progress is not None
-            d['inProgressAttemptId'] = in_progress.attempt_id if in_progress else None
+            resumable = (
+                in_progress is not None and in_progress.generation_status == 'ready'
+            )
+            d['hasInProgressAttempt'] = resumable
+            d['inProgressAttemptId'] = in_progress.attempt_id if resumable else None
             d['attemptCount'] = submitted_count
             d['bestScore'] = best.score if best else None
             d['bestPercentage'] = (
                 round((best.score / best.max_score) * 100, 2)
                 if best and best.max_score else None
             )
-            # Cycle progress — lets the frontend show "Cycle 1 · 3/10"
             d['cycleNumber'] = submitted_count // _CYCLE_SIZE
             d['attemptsInCycle'] = submitted_count % _CYCLE_SIZE
             d['cycleSize'] = _CYCLE_SIZE
+            # A resumable in-progress attempt is never considered locked —
+            # the student already started it and must be able to finish.
+            d['isLocked'] = _is_locked(q) and not resumable
             result.append(d)
         return result
 
@@ -128,14 +160,18 @@ class QuizService:
             raise NotFoundError(f'Quiz {quiz_id} not found.')
 
         existing = QuizAttemptRepository.find_in_progress(student_id, quiz_id)
-        if existing and existing.generation_status in ('pending', 'generating'):
-            # Resume only if generation is still in-flight — don't lock student
-            # into stale preferences from a previously completed attempt.
-            return QuizService._attempt_to_dict(existing, include_questions=True)
+        if existing:
+            if existing.generation_status == 'ready':
+                # All questions generated, student mid-answering — resume.
+                # Skip lock check: the attempt was already started, let them finish.
+                return QuizService._attempt_to_dict(existing, include_questions=True)
+            else:
+                # Pending/generating/failed — broken partial attempt, delete and restart.
+                QuizAttemptRepository.delete(existing)
+                StudentRepository.commit()
 
-        if existing and existing.generation_status in ('ready', 'failed'):
-            # Superseded by a new attempt — mark it so history stays clean.
-            QuizAttemptRepository.set_generation_status(existing, 'failed')
+        # Gate: only reaches here when creating a NEW attempt.
+        QuizService._check_chapter_unlocked(student_id, quiz)
 
         student = StudentRepository.get_by_id(student_id)
         question_count = (
@@ -189,24 +225,18 @@ class QuizService:
             # Already generated — just stream the existing questions out
             for q in attempt.attempt_questions:
                 yield {'event': 'question', 'question': q.to_student_dict()}
-            yield {'event': 'done', 'total': len(attempt.attempt_questions)}
+            yield {'event': 'done', 'total': len(attempt.attempt_questions), 'target': attempt.target_question_count}
             return
 
         existing_count = AttemptQuestionRepository.count_for_attempt(attempt_id)
         remaining = attempt.target_question_count - existing_count
         if remaining <= 0:
-            yield {'event': 'done', 'total': existing_count}
+            yield {'event': 'done', 'total': existing_count, 'target': attempt.target_question_count}
             return
 
         # Build context from topic_page rows
         quiz = attempt.quiz
-        if quiz.scope == 'bab':
-            pages = TopicPageRepository.list_for_chapter(quiz.form_level, quiz.chapter_id)
-        else:  # 'form' — mega quiz, all chapters
-            chapters = ChapterRepository.list_by_form_level(quiz.form_level)
-            pages = []
-            for c in chapters:
-                pages.extend(TopicPageRepository.list_for_chapter(c.form_level, c.chapter_id))
+        pages = TopicPageRepository.list_for_chapter(quiz.form_level, quiz.chapter_id)
 
         if not pages:
             QuizAttemptRepository.set_generation_status(attempt, 'failed')
@@ -378,6 +408,14 @@ class QuizService:
         )
 
     @staticmethod
+    def delete_attempt(student_id: int, attempt_id: int) -> None:
+        attempt = QuizService._fetch_owned_attempt(student_id, attempt_id)
+        if attempt.status == 'submitted':
+            raise ForbiddenError('Cannot delete a submitted attempt.')
+        QuizAttemptRepository.delete(attempt)
+        StudentRepository.commit()
+
+    @staticmethod
     def list_my_attempts(
         student_id: int, quiz_id: Optional[int] = None
     ) -> List[dict]:
@@ -395,6 +433,21 @@ class QuizService:
     # ==================================================================
     # Internals
     # ==================================================================
+
+    @staticmethod
+    def _check_chapter_unlocked(student_id: int, quiz: Quiz) -> None:
+        """Raise ForbiddenError if the student hasn't completed all topics in the chapter."""
+        progress = LearningProgressRepository.get_by_student_id(student_id)
+        if not progress:
+            raise ForbiddenError('Complete all topics in this chapter before taking the quiz.')
+        total = TopicRepository.count_by_chapter(quiz.form_level, quiz.chapter_id)
+        if total == 0:
+            raise ForbiddenError('Complete all topics in this chapter before taking the quiz.')
+        completed = LearningProgressRepository.count_completed_in_chapter(
+            progress.progress_id, quiz.form_level, quiz.chapter_id
+        )
+        if completed < total:
+            raise ForbiddenError('Complete all topics in this chapter before taking the quiz.')
 
     @staticmethod
     def _fetch_owned_attempt(student_id: int, attempt_id: int) -> QuizAttempt:
