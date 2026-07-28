@@ -1,13 +1,3 @@
-"""
-TopicPage entity.
-
-One row per page of each Topic's PDF. The AI tutor uses these rows for
-page-precise context (Phase 3); the quiz generator concatenates them for
-chapter-wide context.
-
-Populated by `scripts/ingest_pdf.py` after a PDF is dropped into
-backend/static/pdfs/.
-"""
 from ..extensions import db
 
 

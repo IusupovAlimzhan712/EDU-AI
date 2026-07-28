@@ -85,12 +85,14 @@ _RE_MULTI_WORD_NAME = re.compile(r'\b[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})+\b')
 
 # BM personal pronouns — strong signal that context mentions a specific person
 _RE_PERSONAL_PRONOUN = re.compile(
-    r'\b(?:beliau|baginda|baginda|dia|mereka)\b', re.IGNORECASE
+    r'\b(?:beliau|baginda|dia|mereka)\b', re.IGNORECASE
 )
 
 # Person title prefixes common in Malaysian history
+# Tunku must precede Tun so the longer form is tried first (both need \b but
+# Tun\b would not match inside Tunku anyway — included explicitly for clarity)
 _RE_PERSON_TITLE = re.compile(
-    r'\b(?:Raja|Sultan|Tun|Dato|Datuk|Bendahara|Temenggung|Laksamana|Yamtuan)\b'
+    r'\b(?:Raja|Sultan|Tunku|Tun|Dato|Datuk|Bendahara|Temenggung|Laksamana|Yamtuan)\b'
 )
 
 # Any 4-digit year 1000–1999

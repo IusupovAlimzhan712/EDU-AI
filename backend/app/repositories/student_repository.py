@@ -39,14 +39,6 @@ class StudentRepository:
         return student
 
     @staticmethod
-    def update(student: Student, **fields) -> Student:
-        for key, value in fields.items():
-            if hasattr(student, key) and value is not None:
-                setattr(student, key, value)
-        db.session.flush()
-        return student
-
-    @staticmethod
     def delete(student: Student) -> None:
         db.session.delete(student)
 

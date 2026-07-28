@@ -6,9 +6,13 @@ Returns one of:
   'comparison' — bezakan, bandingkan, apakah perbezaan / persamaan
   'kbat'       — mengapa, bagaimana, huraikan, bincangkan (default)
 
+Also exposes is_social_message() which detects greetings, thanks, and
+study-support phrases that should bypass KB retrieval entirely.
+
 Used to:
   1. Inject mode-specific prompt instructions (extractive vs reasoning)
   2. Set the dynamic num_predict (token) limit for Ollama
+  3. Short-circuit social messages before retrieval
 """
 import re
 
@@ -71,10 +75,90 @@ _RE_KBAT       = [re.compile(p, re.IGNORECASE) for p in _KBAT]
 # These are CAPS, not targets — the model stops at EOS regardless.
 # Short caps prevent over-explanation for factual questions.
 MODE_TOKENS: dict[str, int] = {
-    'factual':    150,   # 1-3 sentences or a short list
-    'comparison': 280,   # side-by-side comparison, up to 5 points
-    'kbat':       400,   # reasoning/explanation with evidence
+    'factual':    400,   # list + 1-sentence explanation per item
+    'comparison': 500,   # side-by-side comparison with explanations
+    'kbat':       600,   # reasoning/explanation with evidence
 }
+
+
+# ── Social / casual message detection ────────────────────────────────────────
+# These patterns identify messages that need a warm conversational reply,
+# NOT knowledge-base retrieval. Checked BEFORE the academic pipeline.
+
+_RE_SOCIAL_GREETING = re.compile(
+    r'^(?:hi|hello|hey|helo|hai|yo)\b'
+    r'|^(?:selamat\s+(?:pagi|tengahari|tengah\s*hari|petang|malam|sejahtera))\b'
+    r'|^(?:assalamualaikum|a(?:s+)alamu?(?:alaikum)?|waalaikumsalam|salam)\b'
+    r'|^good\s+(?:morning|afternoon|evening|night)\b',
+    re.IGNORECASE,
+)
+
+_RE_SOCIAL_THANKS = re.compile(
+    r'^(?:terima\s*kasih|thanks?|thank\s+you|tq|thx|syukran|jazakallah)\b',
+    re.IGNORECASE,
+)
+
+_RE_SOCIAL_FAREWELL = re.compile(
+    r'^(?:bye|goodbye|tata|jumpa\s+lagi|sampai\s+jumpa|selamat\s+tinggal|good\s*night)\b',
+    re.IGNORECASE,
+)
+
+_RE_SOCIAL_STUDY_SUPPORT = re.compile(
+    r'\b(?:penat|tired|exhausted|blur|confused|keliru|sedih|stress|risau|nervous|bosan)\b'
+    r'|\b(?:susah(?:nya|lah?|betul|sangat|gila)?|hard|difficult)\b'
+    r'|^(?:exam|peperiksaan|test|ujian)\s+(?:esok|besok|tomorrow|minggu\s*depan|lusa)\b'
+    r'|^(?:ada\s+exam|nak\s+(?:belajar|ulang\s*kaji|study))\b'
+    r'|^(?:boleh\s+(?:tak|kah)?\s*(?:tolong|bantu|ajar))\b'
+    r'|^(?:tolong\s+(?:bantu|ajar)\s+(?:saya|aku))\b'
+    r'|^(?:can\s+you\s+help|help\s+me|i\s+(?:need|want)\s+help)\b',
+    re.IGNORECASE,
+)
+
+_RE_SOCIAL_AFFIRMATION = re.compile(
+    r'^(?:ok|okay|alright|baik|faham|paham|got\s+it|i\s+see|noted|roger|boleh|fine)'
+    r'(?:\s+(?:ok|okay|faham|paham|baik|la|je|juga|sudah|lah))?\s*[!.]*$',
+    re.IGNORECASE,
+)
+
+# If ANY of these historical keywords appear, the message is academic not social.
+_RE_HISTORY_KEYWORD = re.compile(
+    r'\b(?:'
+    r'sejarah|bab|tingkatan|form\s*[45]'
+    r'|sultan|raja|kolonial|british|jepun|portugis|belanda|inggeris|dutch'
+    r'|kemerdekaan|penjajah|perang|dasar|perlembagaan|parlimen|merdeka'
+    r'|melayu|melaka|perak|selangor|kesultanan|tokoh|pahlawan|pejuang'
+    r'|kssm|spm|spr|malayan|federation|persekutuan'
+    r'|1[0-9]{3}'
+    r')\b',
+    re.IGNORECASE,
+)
+
+_SOCIAL_CHECKS = (
+    _RE_SOCIAL_GREETING,
+    _RE_SOCIAL_THANKS,
+    _RE_SOCIAL_FAREWELL,
+    _RE_SOCIAL_STUDY_SUPPORT,
+    _RE_SOCIAL_AFFIRMATION,
+)
+
+
+def is_social_message(question: str) -> bool:
+    """Return True if the message is casual/social and should bypass KB retrieval.
+
+    Study-support / emotional messages are classified as social even when they
+    mention subject names like "Sejarah" ("Susahnya Sejarah ni" is emotional
+    support, not an academic query).  All other social patterns (greetings,
+    thanks, farewells) are blocked by history keywords to prevent academic
+    questions from accidentally matching.
+    """
+    q = question.strip()
+    # Study-support patterns bypass the history-keyword guard — a student saying
+    # "Susahnya Sejarah ni, rasa nak give up" is venting, not asking a factual Q.
+    if _RE_SOCIAL_STUDY_SUPPORT.search(q):
+        return True
+    if _RE_HISTORY_KEYWORD.search(q):
+        return False
+    return any(pattern.search(q) for pattern in _SOCIAL_CHECKS)
 
 
 def classify_question(question: str) -> str:

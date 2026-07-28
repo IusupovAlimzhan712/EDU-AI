@@ -38,6 +38,10 @@ export function QuizInProgress({
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
+  // ---------- Leave-during-generation guard ----------
+  const [showLeaveWarning, setShowLeaveWarning] = useState(false);
+  const [pendingNav, setPendingNav] = useState<{ page: string; params?: any } | null>(null);
+
   // ============ Load attempt + decide whether to stream ============
 
   useEffect(() => {
@@ -178,6 +182,26 @@ export function QuizInProgress({
     }
   };
 
+  // ============ Leave guard ============
+
+  const handleBackClick = () => {
+    if (isStreaming) {
+      setPendingNav({ page: 'quiz-selection' });
+      setShowLeaveWarning(true);
+    } else {
+      onNavigate('quiz-selection');
+    }
+  };
+
+  const confirmLeave = async () => {
+    streamCtrlRef.current?.abort();
+    if (attempt) {
+      try { await api.deleteAttempt(attempt.attemptId); } catch {}
+    }
+    const nav = pendingNav ?? { page: 'quiz-selection' };
+    onNavigate(nav.page, nav.params);
+  };
+
   // ============ Submit ============
 
   const handleSubmit = async () => {
@@ -276,13 +300,36 @@ export function QuizInProgress({
         <Button
           variant="outline"
           onClick={() => {
-            streamCtrlRef.current?.abort();
-            onNavigate('quiz-selection');
+            setPendingNav({ page: 'quiz-selection' });
+            setShowLeaveWarning(true);
           }}
           className="mt-6"
         >
           Cancel
         </Button>
+
+        {showLeaveWarning && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl shadow-edu-xl p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold text-[#111827] mb-2">Leave quiz?</h3>
+              <p className="text-[#6B7280] mb-4">
+                Questions are still being generated. If you leave now, the partial questions
+                will be deleted and you'll need to start generation from scratch.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setShowLeaveWarning(false)}>
+                  Stay
+                </Button>
+                <Button
+                  onClick={confirmLeave}
+                  className="bg-[#DC2626] hover:bg-[#B91C1C] text-white"
+                >
+                  Leave and restart
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -293,9 +340,9 @@ export function QuizInProgress({
       {/* Top bar */}
       <div className="bg-white border-b border-[#E5E7EB] px-6 py-4 flex items-center gap-4">
         <button
-          onClick={() => onNavigate('quiz-selection')}
+          onClick={handleBackClick}
           className="p-2 hover:bg-[#F3F4F6] rounded"
-          title="Back (your progress is saved)"
+          title={isStreaming ? 'Leave (questions will be deleted)' : 'Back (your progress is saved)'}
         >
           <ArrowLeft className="w-5 h-5 text-[#6B7280]" />
         </button>
@@ -485,6 +532,30 @@ export function QuizInProgress({
           </div>
         </main>
       </div>
+
+      {/* Leave-during-generation warning */}
+      {showLeaveWarning && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-edu-xl p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-[#111827] mb-2">Leave quiz?</h3>
+            <p className="text-[#6B7280] mb-4">
+              Questions are still being generated. If you leave now, the partial questions
+              will be deleted and you'll need to start generation from scratch.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowLeaveWarning(false)}>
+                Stay
+              </Button>
+              <Button
+                onClick={confirmLeave}
+                className="bg-[#DC2626] hover:bg-[#B91C1C] text-white"
+              >
+                Leave and restart
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Submit confirmation */}
       {showSubmitConfirm && (

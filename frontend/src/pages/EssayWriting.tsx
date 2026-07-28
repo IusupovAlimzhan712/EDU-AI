@@ -283,7 +283,7 @@ function CodeNodeItem({ node, depth }: { node: CodeNode; depth: number }) {
         </span>
         <span>{node.text}</span>
       </div>
-      {node.children.map((child) => (
+      {(node.children ?? []).map((child) => (
         <CodeNodeItem key={child.code} node={child} depth={depth + 1} />
       ))}
     </div>

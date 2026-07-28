@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Search, Grid as GridIcon, List, Bookmark, BookmarkCheck, BookOpen, Clock } from 'lucide-react';
 import { AppSidebar } from '../components/AppSidebar';
 import { Input } from '../components/ui/input';
@@ -11,9 +11,10 @@ import { api, TopicSummary, Chapter, APIError } from '../lib/api';
 
 interface TopicsBrowserProps {
   onNavigate: (page: any, params?: any) => void;
+  initialFormLevel?: string | null;
+  initialChapterId?: string | null;
 }
 
-// The existing TopicCard expects this shape — we adapt API data to it.
 type UITopic = {
   id: string;
   title: string;
@@ -40,9 +41,73 @@ function toUITopic(t: TopicSummary): UITopic {
   };
 }
 
-export function TopicsBrowser({ onNavigate }: TopicsBrowserProps) {
+interface TopicCardProps {
+  topic: UITopic;
+  onNavigate: (page: any, params?: any) => void;
+  onToggleBookmark: (topicId: string) => void;
+}
+
+function TopicCard({ topic, onNavigate, onToggleBookmark }: TopicCardProps) {
+  return (
+    <div className="bg-white rounded-xl shadow-edu-sm hover:shadow-edu-md transition-default overflow-hidden cursor-pointer group">
+      <div className="relative">
+        <div
+          className="h-32 bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] flex items-center justify-center"
+          onClick={() => onNavigate('topic-content', { topicId: topic.id })}
+        >
+          <BookOpen className="w-12 h-12 text-white opacity-80" />
+        </div>
+        <div className="absolute top-3 left-3">
+          <span className="px-2 py-1 bg-white/90 backdrop-blur-sm text-xs font-medium text-[#1E3A8A] rounded">
+            {topic.chapter}
+          </span>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleBookmark(topic.id);
+          }}
+          className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-default"
+        >
+          {topic.isBookmarked ? (
+            <BookmarkCheck className="w-4 h-4 text-[#F59E0B]" fill="#F59E0B" />
+          ) : (
+            <Bookmark className="w-4 h-4 text-[#6B7280]" />
+          )}
+        </button>
+      </div>
+      <div
+        className="p-4"
+        onClick={() => onNavigate('topic-content', { topicId: topic.id })}
+      >
+        <h3 className="font-bold text-[#111827] mb-1 group-hover:text-[#1E3A8A] transition-default">
+          {topic.title}
+        </h3>
+        <p className="text-xs text-[#6B7280] mb-3">{topic.chapterName}</p>
+        <div className="mb-3">
+          <div className="flex justify-between text-xs text-[#6B7280] mb-1.5">
+            <span>Progress</span>
+            <span>{topic.progress}%</span>
+          </div>
+          <Progress value={topic.progress} className="h-1.5" />
+        </div>
+        <div className="flex items-center justify-between">
+          <StatusBadge status={topic.status} />
+          <span className="text-xs text-[#6B7280] flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {topic.duration}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function TopicsBrowser({ onNavigate, initialFormLevel, initialChapterId }: TopicsBrowserProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedForm, setSelectedForm] = useState<'4' | '5'>('4');
+  const [selectedForm, setSelectedForm] = useState<'4' | '5'>(
+    initialFormLevel === '5' ? '5' : '4'
+  );
   const [chapterFilter, setChapterFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -52,12 +117,25 @@ export function TopicsBrowser({ onNavigate }: TopicsBrowserProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Track whether the initial chapter hint has been applied yet.
+  // We can only set the chapter filter after chapters have loaded.
+  const pendingChapter = useRef(initialChapterId ?? null);
+
   // Fetch chapters when the form level changes
   useEffect(() => {
     api.listChapters(parseInt(selectedForm, 10))
-      .then(setChapters)
+      .then((chs) => {
+        setChapters(chs);
+        if (pendingChapter.current) {
+          setChapterFilter(pendingChapter.current);
+          pendingChapter.current = null;
+        }
+      })
       .catch(() => setChapters([]));
-    setChapterFilter('all');
+    // Only reset the filter when the user actively changes form level (not on initial mount)
+    if (!pendingChapter.current) {
+      setChapterFilter('all');
+    }
   }, [selectedForm]);
 
   // Fetch topics whenever form / chapter / search changes
@@ -109,60 +187,6 @@ export function TopicsBrowser({ onNavigate }: TopicsBrowserProps) {
       setTopics(topics);
     }
   };
-
-  const TopicCard = ({ topic }: { topic: UITopic }) => (
-    <div className="bg-white rounded-xl shadow-edu-sm hover:shadow-edu-md transition-default overflow-hidden cursor-pointer group">
-      <div className="relative">
-        <div
-          className="h-32 bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] flex items-center justify-center"
-          onClick={() => onNavigate('topic-content', { topicId: topic.id })}
-        >
-          <BookOpen className="w-12 h-12 text-white opacity-80" />
-        </div>
-        <div className="absolute top-3 left-3">
-          <span className="px-2 py-1 bg-white/90 backdrop-blur-sm text-xs font-medium text-[#1E3A8A] rounded">
-            {topic.chapter}
-          </span>
-        </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleBookmark(topic.id);
-          }}
-          className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-default"
-        >
-          {topic.isBookmarked ? (
-            <BookmarkCheck className="w-4 h-4 text-[#F59E0B]" fill="#F59E0B" />
-          ) : (
-            <Bookmark className="w-4 h-4 text-[#6B7280]" />
-          )}
-        </button>
-      </div>
-      <div
-        className="p-4"
-        onClick={() => onNavigate('topic-content', { topicId: topic.id })}
-      >
-        <h3 className="font-bold text-[#111827] mb-1 group-hover:text-[#1E3A8A] transition-default">
-          {topic.title}
-        </h3>
-        <p className="text-xs text-[#6B7280] mb-3">{topic.chapterName}</p>
-        <div className="mb-3">
-          <div className="flex justify-between text-xs text-[#6B7280] mb-1.5">
-            <span>Progress</span>
-            <span>{topic.progress}%</span>
-          </div>
-          <Progress value={topic.progress} className="h-1.5" />
-        </div>
-        <div className="flex items-center justify-between">
-          <StatusBadge status={topic.status} />
-          <span className="text-xs text-[#6B7280] flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            {topic.duration}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="flex h-screen bg-[#F9FAFB]">
@@ -264,7 +288,7 @@ export function TopicsBrowser({ onNavigate }: TopicsBrowserProps) {
                 }
               >
                 {filteredTopics.map((t) => (
-                  <TopicCard key={t.id} topic={t} />
+                  <TopicCard key={t.id} topic={t} onNavigate={onNavigate} onToggleBookmark={toggleBookmark} />
                 ))}
               </div>
             )}

@@ -1,12 +1,4 @@
-"""
-PasswordResetToken entity.
-
-NOT in the original data dictionary but required to implement UC 4.3.4
-(Reset Password) in a stateless way. A row is created when the student
-clicks "Forgot Password"; the token expires per
-PASSWORD_RESET_TOKEN_EXPIRES.
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..extensions import db
 
@@ -28,13 +20,16 @@ class PasswordResetToken(db.Model):
     expires_at = db.Column('expiresAt', db.DateTime, nullable=False)
     used = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(
-        'createdAt', db.DateTime, nullable=False, default=datetime.utcnow
+        'createdAt', db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
 
     student = db.relationship('Student', back_populates='reset_tokens')
 
     def is_valid(self) -> bool:
-        return (not self.used) and datetime.utcnow() < self.expires_at
+        expires = self.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return (not self.used) and datetime.now(timezone.utc) < expires
 
     def __repr__(self) -> str:
         return f'<PasswordResetToken student={self.student_id} used={self.used}>'

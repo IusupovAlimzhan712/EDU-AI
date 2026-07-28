@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, TrendingUp, Target, PlayCircle, MessageSquare, PenTool, Grid, Clock, CheckCircle } from 'lucide-react';
+import { BookOpen, TrendingUp, Target, PlayCircle, MessageSquare, PenTool, Grid, Clock, CheckCircle, Flame } from 'lucide-react';
 import { AppSidebar } from '../components/AppSidebar';
 import { StatsCard } from '../components/StatsCard';
 import { Button } from '../components/ui/button';
@@ -88,6 +88,19 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       value: loading ? '—' : progress ? String(progress.bookmarkedTopicsCount) : '—',
       trend: { direction: 'up' as const, value: 'Saved for later' },
     },
+    {
+      icon: Flame,
+      iconColor: '#EA580C',
+      iconBgColor: '#FFF7ED',
+      label: 'Study Streak',
+      value: loading ? '—' : progress ? `${progress.currentStreak} day${progress.currentStreak === 1 ? '' : 's'}` : '—',
+      trend: {
+        direction: 'up' as const,
+        value: loading ? '' : progress?.currentStreak
+          ? `Keep it up!`
+          : 'Complete a topic to start',
+      },
+    },
   ];
 
   const quickActions = [
@@ -170,7 +183,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           )}
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
             {stats.map((stat, index) => (
               <StatsCard key={index} {...stat} />
             ))}

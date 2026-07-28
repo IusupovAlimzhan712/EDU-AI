@@ -221,6 +221,8 @@ export interface ProgressOverview {
   quizzesCompleted: number;
   quizAverage: number | null;
   bestQuizPercentage: number | null;
+  currentStreak: number;
+  lastStudyDate: string | null;
   lastUpdated: string;
   byChapter: Array<{
     formLevel: number;
@@ -242,7 +244,7 @@ export interface QuizSummary {
   title: string;
   formLevel: number;
   chapterId: number | null;
-  scope: 'bab' | 'form';
+  scope: 'bab';
   source: 'seed' | 'ai';
   difficulty: string | null;
   defaultQuestionCount: number;          // ← was questionCount
@@ -251,6 +253,7 @@ export interface QuizSummary {
   attemptCount: number;
   bestScore: number | null;
   bestPercentage: number | null;
+  isLocked: boolean;
   // Cycle-based history reset — generator starts fresh every cycleSize attempts
   cycleNumber: number;        // which cycle (0, 1, 2…)
   attemptsInCycle: number;    // how many submitted attempts in the current cycle
@@ -551,6 +554,9 @@ export const api = {
     request<QuizAttempt>(`/me/attempts/${attemptId}/submit`, {
       method: 'POST',
     }),
+
+  deleteAttempt: (attemptId: number) =>
+    request<void>(`/me/attempts/${attemptId}`, { method: 'DELETE' }),
 
   // ============ AI Tutor ============
 

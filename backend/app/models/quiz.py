@@ -1,11 +1,4 @@
-"""
-Quiz entity — Section 4.4 of FYP1 report.
-
-Step 5 change: Quiz is now a TEMPLATE (scope, title, difficulty target).
-Questions live per-attempt in AttemptQuestion. Quiz no longer has
-questions of its own.
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..extensions import db
 
@@ -26,10 +19,10 @@ class Quiz(db.Model):
         'defaultQuestionCount', db.Integer, nullable=False, default=10
     )
 
-    created_at = db.Column('createdAt', db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column('createdAt', db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
         'updatedAt', db.DateTime, nullable=False,
-        default=datetime.utcnow, onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
 
     __table_args__ = (

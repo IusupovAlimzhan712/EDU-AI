@@ -1,17 +1,4 @@
-"""
-ChatMessage entity.
-
-One turn in a ChatConversation. 'user' messages are from the student;
-'assistant' messages are AI-generated tutor responses.
-
-validation_status records whether the response passed our checks:
-  - 'ok'        : validation passed cleanly
-  - 'warned'    : validation found issues but the response was shown anyway
-                  (after exhausting retries) — frontend displays a banner
-  - 'rejected'  : not used (rejected responses aren't saved)
-  - 'na'        : not applicable (user messages)
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 from ..extensions import db
 
 
@@ -44,7 +31,7 @@ class ChatMessage(db.Model):
     )
 
     created_at = db.Column(
-        'createdAt', db.DateTime, nullable=False, default=datetime.utcnow
+        'createdAt', db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
 
     __table_args__ = (

@@ -1,4 +1,8 @@
-"""Sanity tests for the Account module (Week 2 deliverable)."""
+"""Sanity tests for the Account module (Week 2 deliverable).
+
+Includes UC-F1.2 E1 account-lock tests (UT-21, UT-22, UT-23).
+"""
+from app.services.account_service import _MAX_FAILED_ATTEMPTS
 
 
 def test_health(client):
@@ -136,3 +140,62 @@ def test_password_reset_flow(client):
         'email': 'grace@example.com',
         'password': 'NewPass1A',
     }).status_code == 200
+
+
+# ── UC-F1.2 E1 account-lock tests ────────────────────────────────────────────
+
+_LOCK_BODY = {
+    'email': 'locktest@example.com',
+    'password': 'SecurePass1',
+    'fullName': 'Lock Test',
+    'formLevel': 4,
+}
+
+
+def _register_lock_user(client):
+    client.post('/api/auth/register', json=_LOCK_BODY)
+
+
+def test_account_lock_triggers_after_max_failures(client):
+    """UT-21: HTTP 429 returned after _MAX_FAILED_ATTEMPTS bad passwords."""
+    _register_lock_user(client)
+    bad = {'email': _LOCK_BODY['email'], 'password': 'WrongPass!'}
+    for _ in range(_MAX_FAILED_ATTEMPTS - 1):
+        assert client.post('/api/auth/login', json=bad).status_code == 401
+    # The _MAX_FAILED_ATTEMPTS-th failure locks the account.
+    r = client.post('/api/auth/login', json=bad)
+    assert r.status_code == 429
+    data = r.get_json()
+    assert 'locked' in data['message'].lower()
+
+
+def test_correct_password_rejected_while_locked(client):
+    """UT-22: Even the correct password is rejected while the account is locked."""
+    _register_lock_user(client)
+    bad = {'email': _LOCK_BODY['email'], 'password': 'WrongPass!'}
+    for _ in range(_MAX_FAILED_ATTEMPTS):
+        client.post('/api/auth/login', json=bad)
+    # Now try with the correct password — must still get 429.
+    r = client.post('/api/auth/login', json={
+        'email': _LOCK_BODY['email'],
+        'password': _LOCK_BODY['password'],
+    })
+    assert r.status_code == 429
+
+
+def test_failed_attempts_reset_on_successful_login(client):
+    """UT-23: failed_attempts counter resets to 0 after a successful login."""
+    _register_lock_user(client)
+    bad = {'email': _LOCK_BODY['email'], 'password': 'WrongPass!'}
+    # Accumulate failures but stay below the threshold.
+    for _ in range(_MAX_FAILED_ATTEMPTS - 1):
+        client.post('/api/auth/login', json=bad)
+    # Correct login clears the counter.
+    r = client.post('/api/auth/login', json={
+        'email': _LOCK_BODY['email'],
+        'password': _LOCK_BODY['password'],
+    })
+    assert r.status_code == 200
+    # After clearing, a wrong attempt should NOT immediately lock (counter reset).
+    r2 = client.post('/api/auth/login', json=bad)
+    assert r2.status_code == 401  # not 429

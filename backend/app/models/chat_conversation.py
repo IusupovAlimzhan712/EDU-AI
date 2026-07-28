@@ -1,10 +1,4 @@
-"""
-ChatConversation entity.
-
-One conversation per (student, topic) pair. Holds the chat history
-for the AI Tutor panel inside a specific Bab.
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 from ..extensions import db
 
 
@@ -29,11 +23,11 @@ class ChatConversation(db.Model):
         index=True,
     )
     created_at = db.Column(
-        'createdAt', db.DateTime, nullable=False, default=datetime.utcnow
+        'createdAt', db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     updated_at = db.Column(
         'updatedAt', db.DateTime, nullable=False,
-        default=datetime.utcnow, onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
 
     __table_args__ = (

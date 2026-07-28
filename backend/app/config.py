@@ -57,7 +57,7 @@ class Config:
     PASSWORD_RESET_TOKEN_EXPIRES = int(
         os.environ.get('PASSWORD_RESET_TOKEN_EXPIRES', 3600)
     )
-    DEV_RETURN_RESET_TOKEN = os.environ.get('DEV_RETURN_RESET_TOKEN', '1') == '1'
+    DEV_RETURN_RESET_TOKEN = os.environ.get('DEV_RETURN_RESET_TOKEN', '0') == '1'
 
     # --- Email (optional) ---
     SMTP_HOST = os.environ.get('SMTP_HOST', '')
@@ -69,10 +69,10 @@ class Config:
     # --- Frontend URL ---
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
-    # --- Ollama (AI) ---
-    OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'aya:8b')
-    OLLAMA_TIMEOUT_SECONDS = int(os.environ.get('OLLAMA_TIMEOUT_SECONDS', 180))
+    # --- OpenAI (AI) ---
+    OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+    OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+    OPENAI_TIMEOUT_SECONDS = int(os.environ.get('OPENAI_TIMEOUT_SECONDS', 60))
 
     # --- Bcrypt ---
     BCRYPT_LOG_ROUNDS = 12
@@ -95,6 +95,7 @@ class TestingConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
+    DEV_RETURN_RESET_TOKEN = False
 
 
 config_by_name = {

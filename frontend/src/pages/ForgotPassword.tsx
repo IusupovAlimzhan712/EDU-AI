@@ -86,7 +86,7 @@ export function ForgotPassword({ onNavigate }: ForgotPasswordProps) {
             <p className="text-[#1E3A8A] font-medium mb-8">{email}</p>
 
             {/* Dev-mode helper: show the reset token directly when SMTP is not configured */}
-            {devToken && (
+            {window.location.hostname === 'localhost' && devToken && (
               <div className="mb-6 p-3 rounded-lg bg-[#FEF3C7] border border-[#F59E0B]/30 text-left">
                 <p className="text-xs font-semibold text-[#92400E] mb-1">
                   DEV mode — reset token (paste into the reset form):

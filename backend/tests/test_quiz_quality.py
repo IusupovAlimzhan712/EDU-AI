@@ -10,7 +10,7 @@ Tests the quiz pipeline components directly without LLM calls:
   F. expand_keywords — synonym expansion
   G. _split_paragraphs — paragraph chunking
   H. _stratified_context — context sampling
-  I. OllamaQuestionGenerator._is_duplicate() — deduplication
+  I. LlmQuestionGenerator._is_duplicate() — deduplication
   J. normalize() on quiz output — Indonesian vocab sanitisation
 """
 import pytest
@@ -491,19 +491,19 @@ class TestStratifiedContext:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# I. OllamaQuestionGenerator._is_duplicate()
+# I. LlmQuestionGenerator._is_duplicate()
 # ═══════════════════════════════════════════════════════════════════
 
 class TestDeduplication:
-    """Test duplicate detection without instantiating Ollama (no LLM calls)."""
+    """Test duplicate detection without instantiating the LLM (no API calls)."""
 
     @pytest.fixture(autouse=True)
     def setup(self):
-        from app.services.ai.ollama_generator import OllamaQuestionGenerator
-        # Patch __init__ to avoid connecting to Ollama
+        from app.services.ai.llm_generator import LlmQuestionGenerator
+        # Patch __init__ to avoid making LLM API calls
         import unittest.mock as mock
-        with mock.patch.object(OllamaQuestionGenerator, '__init__', return_value=None):
-            self.gen = OllamaQuestionGenerator()
+        with mock.patch.object(LlmQuestionGenerator, '__init__', return_value=None):
+            self.gen = LlmQuestionGenerator()
 
     def test_identical_stems_are_duplicates(self):
         stem = 'Siapakah pengasas Melaka?'
@@ -601,3 +601,611 @@ class TestJaccard:
 
     def test_one_empty_string(self):
         assert _jaccard('parameswara', '') == 0.0
+
+
+# ═══════════════════════════════════════════════════════════════════
+# L. validate_stem_quality — ALL-CAPS gibberish rejection
+# ═══════════════════════════════════════════════════════════════════
+
+class TestValidateStemQualityNew:
+
+    def test_allcaps_gibberish_rejected(self):
+        q = _q(stem='Siapakah YANG ADALAH PENGACAR yang BESAR dalam sejarah?')
+        err = ContentValidator.validate_stem_quality(q)
+        assert err is not None and 'ALL-CAPS' in err
+
+    def test_normal_question_with_acronym_passes(self):
+        # Legitimate acronym — only one ALLCAPS token, below the threshold of 2
+        q = _q(stem='Apakah kepanjangan bagi UMNO dalam politik Malaysia?')
+        err = ContentValidator.validate_stem_quality(q)
+        assert err is None
+
+    def test_two_short_caps_not_rejected(self):
+        # Single caps word (3 chars or shorter) should not trigger
+        q = _q(stem='Apakah nama PM yang berkhidmat pada era DEB di Malaysia?')
+        err = ContentValidator.validate_stem_quality(q)
+        assert err is None
+
+    def test_essay_starter_still_rejected(self):
+        q = _q(stem='Huraikan peranan Parameswara dalam sejarah Melaka?')
+        err = ContentValidator.validate_stem_quality(q)
+        assert err is not None and 'essay' in err
+
+    def test_no_question_mark_still_rejected(self):
+        q = _q(stem='Apakah nama pengasas Melaka')
+        err = ContentValidator.validate_stem_quality(q)
+        assert err == 'stem does not end with question mark'
+
+
+# ═══════════════════════════════════════════════════════════════════
+# M. validate_options_clean — option-label leakage detection
+# ═══════════════════════════════════════════════════════════════════
+
+class TestValidateOptionsClean:
+
+    def test_clean_options_pass(self):
+        q = _q(options=['Parameswara', 'Hang Tuah', 'Tun Perak', 'Sultan Mansur Shah'])
+        assert ContentValidator.validate_options_clean(q) is None
+
+    def test_option_with_a_dot_prefix_detected(self):
+        q = _q(options=[
+            'A. Parameswara mengasaskan Melaka',
+            'Hang Tuah',
+            'Tun Perak',
+            'Sultan Mansur Shah',
+        ])
+        err = ContentValidator.validate_options_clean(q)
+        assert err is not None and 'label prefix' in err
+
+    def test_lowercase_a_dot_prefix_also_detected(self):
+        q = _q(options=[
+            'a. parameswara',
+            'Hang Tuah',
+            'Tun Perak',
+            'Sultan Mansur',
+        ])
+        err = ContentValidator.validate_options_clean(q)
+        assert err is not None
+
+    def test_d_dot_prefix_detected(self):
+        q = _q(options=[
+            'Parameswara',
+            'Hang Tuah',
+            'Tun Perak',
+            'D. Sultan Mansur Shah',
+        ], correct_index=3)
+        err = ContentValidator.validate_options_clean(q)
+        assert err is not None
+
+    def test_option_starting_with_d_word_not_rejected(self):
+        # "Dasar Ekonomi Baru" starts with 'D' but isn't a label prefix
+        q = _q(options=['Dasar Ekonomi Baru', 'Dasar Pandang Timur', 'Wawasan 2020', 'Dasar Nasional'])
+        assert ContentValidator.validate_options_clean(q) is None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# N. Prompt template — angle system coverage
+# ═══════════════════════════════════════════════════════════════════
+
+class TestAngleSystem:
+
+    def test_ten_angles_defined(self):
+        # Phase 1 added the Roman Numeral angle — now 11 total
+        from app.services.ai.prompt_templates import QUESTION_ANGLES_BM
+        assert len(QUESTION_ANGLES_BM) == 11
+
+    def test_three_cognitive_tiers_present(self):
+        from app.services.ai.prompt_templates import QUESTION_ANGLES_BM
+        tiers = {angle[2] for angle in QUESTION_ANGLES_BM}
+        assert 'recall' in tiers
+        assert 'application' in tiers
+        assert 'hots' in tiers
+
+    def test_three_hots_angles_present(self):
+        from app.services.ai.prompt_templates import QUESTION_ANGLES_BM
+        hots = [a for a in QUESTION_ANGLES_BM if a[2] == 'hots']
+        assert len(hots) == 3
+
+    def test_pick_angle_returns_tuple(self):
+        from app.services.ai.prompt_templates import pick_angle
+        result = pick_angle(0)
+        assert isinstance(result, tuple) and len(result) == 3
+        name, instruction, tier = result
+        assert isinstance(name, str) and len(name) > 0
+        assert isinstance(instruction, str) and len(instruction) > 0
+        assert tier in ('recall', 'application', 'hots')
+
+    def test_shuffled_order_covers_all_angles(self):
+        from app.services.ai.prompt_templates import make_shuffled_angle_order, QUESTION_ANGLES_BM
+        n = len(QUESTION_ANGLES_BM)  # 11
+        order = make_shuffled_angle_order(n)
+        # First n entries should cover all n angle indices exactly once
+        assert sorted(order[:n]) == list(range(n))
+
+    def test_shuffled_order_is_random(self):
+        from app.services.ai.prompt_templates import make_shuffled_angle_order
+        orders = [tuple(make_shuffled_angle_order(10)[:10]) for _ in range(10)]
+        # At least 2 different orderings in 10 samples (probability 1 - 1/10! ≈ 100%)
+        assert len(set(orders)) > 1
+
+    def test_pick_angle_with_shuffled_order(self):
+        from app.services.ai.prompt_templates import pick_angle, make_shuffled_angle_order
+        order = make_shuffled_angle_order(10)
+        results = [pick_angle(i, order) for i in range(10)]
+        # All tiers should appear in a 10-question set
+        tiers = {r[2] for r in results}
+        assert 'recall' in tiers
+        assert 'application' in tiers
+        assert 'hots' in tiers
+
+    def test_shuffled_order_covers_budget(self):
+        """make_shuffled_angle_order must return enough indices for the full budget."""
+        from app.services.ai.prompt_templates import make_shuffled_angle_order, QUESTION_ANGLES_BM
+        budget = 44  # 11 questions × _BUDGET_MULTIPLIER=4
+        order = make_shuffled_angle_order(budget)
+        assert len(order) >= budget
+        # All indices must be valid angle positions
+        assert all(0 <= idx < len(QUESTION_ANGLES_BM) for idx in order)
+
+    def test_roman_numeral_angle_is_application_tier(self):
+        from app.services.ai.prompt_templates import QUESTION_ANGLES_BM
+        rn_angles = [a for a in QUESTION_ANGLES_BM if 'roman numeral' in a[0].lower() or 'pelbagai pernyataan' in a[0].lower()]
+        assert len(rn_angles) == 1, 'exactly one Roman Numeral angle expected'
+        assert rn_angles[0][2] == 'application'
+
+    def test_five_application_angles_present(self):
+        from app.services.ai.prompt_templates import QUESTION_ANGLES_BM
+        app_angles = [a for a in QUESTION_ANGLES_BM if a[2] == 'application']
+        assert len(app_angles) == 5  # 4 original + 1 RN
+
+    def test_application_angles_have_anti_recall_guards(self):
+        """Phase 1: Application/HOTS angle instructions must contain explicit anti-recall language."""
+        from app.services.ai.prompt_templates import QUESTION_ANGLES_BM
+        anti_recall_keywords = ['jangan', 'mesti', 'memahami', 'analisis', 'bukan sekadar']
+        non_recall_angles = [a for a in QUESTION_ANGLES_BM if a[2] in ('application', 'hots')]
+        for name, instruction, tier in non_recall_angles:
+            if 'roman numeral' in name.lower() or 'pelbagai' in name.lower():
+                continue  # RN angle has its own format constraints
+            instr_lower = instruction.lower()
+            has_guard = any(kw in instr_lower for kw in anti_recall_keywords)
+            assert has_guard, (
+                f'Application/HOTS angle "{name}" lacks anti-recall guard. '
+                f'Add explicit instruction preventing recall-style output.'
+            )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# O. Budget-based generation loop (LlmQuestionGenerator internals)
+# ═══════════════════════════════════════════════════════════════════
+
+class TestBudgetBasedGeneration:
+    """Unit tests for the budget-based 'generate until N' loop.
+
+    The generator uses a while loop with a budget cap so that validation
+    failures and dedup rejects don't permanently consume question slots.
+    These tests use a fake _generate_one_with_retries to control outcomes.
+    """
+
+    def _make_question(self, stem: str) -> 'GeneratedQuestion':
+        return GeneratedQuestion(
+            stem=stem,
+            options=['A satu', 'B dua', 'C tiga', 'D empat'],
+            correct_index=0,
+            explanation='Penjelasan ujian.',
+            difficulty='mudah',
+        )
+
+    def test_reaches_target_despite_initial_failures(self):
+        """Generator produces N questions even if the first K attempts fail."""
+        from unittest.mock import patch, MagicMock
+        from app.services.ai.llm_generator import LlmQuestionGenerator
+
+        gen = LlmQuestionGenerator.__new__(LlmQuestionGenerator)
+
+        call_count = 0
+
+        def fake_retries(ctx, stems, angle_name, angle_instruction):
+            nonlocal call_count
+            call_count += 1
+            # Fail the first 5 attempts, then succeed
+            if call_count <= 5:
+                return None
+            return self._make_question(f'Soalan {call_count}?')
+
+        with patch.object(gen, '_generate_one_with_retries', side_effect=fake_retries):
+            results = list(gen.generate_stream('some context', num_questions=3))
+
+        assert len(results) == 3
+        assert call_count > 3  # required more attempts than questions
+
+    def test_budget_cap_prevents_infinite_loop(self):
+        """If every attempt fails, loop stops at budget and yields nothing."""
+        from unittest.mock import patch
+        from app.services.ai.llm_generator import LlmQuestionGenerator
+
+        gen = LlmQuestionGenerator.__new__(LlmQuestionGenerator)
+
+        outer_attempts = []
+
+        def always_fail(ctx, stems, angle_name, angle_instruction):
+            outer_attempts.append(1)
+            return None
+
+        with patch.object(gen, '_generate_one_with_retries', side_effect=always_fail):
+            results = list(gen.generate_stream('ctx', num_questions=3))
+
+        assert results == []
+        # Budget = 3 × _BUDGET_MULTIPLIER (4) = 12 outer attempts max
+        assert len(outer_attempts) == 3 * LlmQuestionGenerator._BUDGET_MULTIPLIER
+
+    def test_dedup_reject_does_not_consume_slot(self):
+        """A duplicate question does not permanently waste a question slot."""
+        from unittest.mock import patch
+        from app.services.ai.llm_generator import LlmQuestionGenerator
+
+        gen = LlmQuestionGenerator.__new__(LlmQuestionGenerator)
+
+        call_count = [0]
+
+        def alternating(ctx, stems, angle_name, angle_instruction):
+            call_count[0] += 1
+            # Odd calls return the SAME stem (will be deduped after the first)
+            # Even calls return a unique stem
+            if call_count[0] % 2 == 1:
+                return self._make_question('Soalan yang sama?')
+            return self._make_question(f'Soalan unik {call_count[0]}?')
+
+        with patch.object(gen, '_generate_one_with_retries', side_effect=alternating):
+            results = list(gen.generate_stream('ctx', num_questions=2))
+
+        # Should have yielded exactly 2 unique questions
+        assert len(results) == 2
+        # The first unique question ('Soalan yang sama?') plus one unique question
+        stems = {r.stem for r in results}
+        assert len(stems) == 2
+
+    def test_seen_stems_seed_dedup_list(self):
+        """seen_stems from previous attempts are respected at the cross-attempt threshold."""
+        from unittest.mock import patch
+        from app.services.ai.llm_generator import LlmQuestionGenerator
+
+        gen = LlmQuestionGenerator.__new__(LlmQuestionGenerator)
+
+        # Produce an identical stem — Jaccard=1.0, blocked even at 0.75
+        def always_identical(ctx, stems, angle_name, angle_instruction):
+            return self._make_question('Soalan lama yang sama persis?')
+
+        historical = ['Soalan lama yang sama persis?']
+
+        with patch.object(gen, '_generate_one_with_retries', side_effect=always_identical):
+            results = list(gen.generate_stream('ctx', num_questions=1, seen_stems=historical))
+
+        assert results == []
+
+    def test_is_duplicate_threshold_parameter(self):
+        """_is_duplicate respects the threshold argument."""
+        from app.services.ai.llm_generator import LlmQuestionGenerator
+        gen = LlmQuestionGenerator.__new__(LlmQuestionGenerator)
+
+        # Jaccard ≈ 0.6 between these two stems
+        new_stem  = 'Apakah kesan Revolusi Amerika yang berlaku pada tahun 1776 terhadap dunia?'
+        hist_stem = 'Apakah kesan daripada Revolusi Amerika yang berlaku pada tahun 1776?'
+
+        # Blocked at strict within-run threshold
+        assert gen._is_duplicate(new_stem, [hist_stem], threshold=0.5) is True
+        # Passes at lenient cross-attempt threshold
+        assert gen._is_duplicate(new_stem, [hist_stem], threshold=0.75) is False
+
+    def test_cross_attempt_threshold_allows_different_angle_same_fact(self):
+        """A question about the same fact from a different angle passes cross-attempt dedup."""
+        from unittest.mock import patch
+        from app.services.ai.llm_generator import LlmQuestionGenerator
+
+        gen = LlmQuestionGenerator.__new__(LlmQuestionGenerator)
+
+        # historical stem: asks about "kesan" (effect)
+        hist = 'Apakah kesan daripada Revolusi Amerika yang berlaku pada tahun 1776?'
+        # new stem: asks about "kepentingan" (significance) — different angle, same fact
+        new_q = 'Apakah kepentingan Revolusi Amerika yang berlaku pada tahun 1776 kepada dunia?'
+
+        # Jaccard ≈ 0.55 → blocked at 0.5, passes at 0.75
+        call_count = [0]
+        def produce_new_angle(ctx, stems, angle_name, angle_instruction):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return self._make_question(new_q)
+            return self._make_question(f'Soalan berbeza {call_count[0]}?')
+
+        with patch.object(gen, '_generate_one_with_retries', side_effect=produce_new_angle):
+            results = list(gen.generate_stream('ctx', num_questions=1, seen_stems=[hist]))
+
+        # With two-tier threshold, the different-angle question passes cross-attempt dedup
+        assert len(results) == 1
+        assert results[0].stem == new_q
+
+
+# ═══════════════════════════════════════════════════════════════════
+# P. Roman Numeral validator
+# ═══════════════════════════════════════════════════════════════════
+
+class TestRomanNumeralValidator:
+    """Tests for ContentValidator.validate_roman_numeral() — Phase 1."""
+
+    def _rn_q(
+        self,
+        stem=None,
+        options=None,
+        correct_index=0,
+    ) -> GeneratedQuestion:
+        if stem is None:
+            stem = (
+                'I Amerika menentang cukai tanpa perwakilan British\n'
+                'II Revolusi Amerika tercetus pada tahun 1776\n'
+                'III Thomas Jefferson memimpin tentera dalam pertempuran\n\n'
+                'Antara pernyataan di atas, yang manakah BETUL?'
+            )
+        if options is None:
+            options = [
+                'I dan II sahaja',
+                'I dan III sahaja',
+                'II dan III sahaja',
+                'I, II dan III',
+            ]
+        return GeneratedQuestion(
+            stem=stem,
+            options=options,
+            correct_index=correct_index,
+            explanation='I dan II adalah betul berdasarkan teks.',
+            difficulty='sederhana',
+        )
+
+    def test_valid_rn_question_passes(self):
+        assert ContentValidator.validate_roman_numeral(self._rn_q()) is None
+
+    def test_non_rn_question_skipped(self):
+        """validate_roman_numeral returns None for regular (non-RN) questions."""
+        regular = _q()  # helper from module level
+        assert ContentValidator.validate_roman_numeral(regular) is None
+
+    def test_rn_missing_markers_in_stem_rejected(self):
+        """Stem without Roman numeral markers is invalid for an RN question."""
+        bad = self._rn_q(
+            stem='Soalan biasa tanpa pernyataan?\n\nAntara pernyataan di atas, yang manakah BETUL?'
+        )
+        err = ContentValidator.validate_roman_numeral(bad)
+        assert err is not None
+        assert 'marker' in err.lower() or 'roman' in err.lower()
+
+    def test_rn_missing_closing_line_rejected(self):
+        """Stem that does not close with 'yang manakah ... betul?' is invalid."""
+        bad = self._rn_q(
+            stem=(
+                'I Amerika menentang cukai tanpa perwakilan\n'
+                'II Revolusi Amerika tercetus 1776\n'
+                'III Jefferson menulis Perisytiharan\n\n'
+                'Ini bukan soalan.'
+            )
+        )
+        err = ContentValidator.validate_roman_numeral(bad)
+        assert err is not None
+
+    def test_rn_non_subset_options_rejected(self):
+        """Options that are regular text (not RN subsets) are invalid."""
+        bad = self._rn_q(
+            options=[
+                'George Washington',
+                'Thomas Jefferson',
+                'Benjamin Franklin',
+                'John Adams',
+            ]
+        )
+        err = ContentValidator.validate_roman_numeral(bad)
+        assert err is not None
+        assert 'option' in err.lower()
+
+    def test_rn_passes_all_standard_validators(self):
+        """A well-formed RN question passes all five standard validators."""
+        q = self._rn_q()
+        assert ContentValidator.validate_structure(q) is None
+        assert ContentValidator.validate_stem_quality(q) is None
+        assert ContentValidator.validate_options_clean(q) is None
+        assert ContentValidator.validate_roman_numeral(q) is None
+        assert ContentValidator.validate_distractors(q) is None
+
+    def test_rn_stem_length_up_to_350_allowed(self):
+        """RN stems up to 350 chars pass stem-quality check."""
+        long_stem = (
+            'I Revolusi Amerika berlaku disebabkan penindasan cukai tanpa perwakilan oleh British\n'
+            'II Thomas Jefferson bersama kongres meluluskan Perisytiharan Kemerdekaan pada 1776\n'
+            'III Revolusi Amerika memberi inspirasi kepada gerakan nasionalisme di Asia Tenggara\n\n'
+            'Antara pernyataan di atas, yang manakah BETUL?'
+        )
+        assert len(long_stem) <= 350
+        q = self._rn_q(stem=long_stem)
+        assert ContentValidator.validate_stem_quality(q) is None
+
+    def test_rn_stem_over_350_rejected(self):
+        """RN stems exceeding 350 chars are still rejected."""
+        padding = 'X' * 300
+        long_stem = (
+            f'I {padding}\n'
+            'II Revolusi berlaku 1776\n'
+            'III Jefferson menulis dokumen\n\n'
+            'Antara pernyataan di atas, yang manakah BETUL?'
+        )
+        assert len(long_stem) > 350
+        q = self._rn_q(stem=long_stem)
+        err = ContentValidator.validate_stem_quality(q)
+        assert err is not None and 'too long' in err
+
+    def test_is_roman_numeral_detection_requires_two_rn_options(self):
+        """_is_roman_numeral_question needs at least 2 RN-format options to fire."""
+        from app.services.ai.content_validator import ContentValidator
+        # Only 1 RN-style option → not detected as RN
+        q_one = _q(options=['I dan II sahaja', 'George Washington', 'Thomas Jefferson', 'Benjamin Franklin'])
+        assert ContentValidator._is_roman_numeral_question(q_one) is False
+        # 2 RN-style options → detected
+        q_two = _q(options=['I dan II sahaja', 'I dan III sahaja', 'Thomas Jefferson', 'Benjamin Franklin'])
+        assert ContentValidator._is_roman_numeral_question(q_two) is True
+
+
+class TestOptionLengthParity:
+    """Phase 2 — validate_option_length_parity() unit tests."""
+
+    def test_balanced_options_pass(self):
+        """Options with similar lengths (ratio < 3.0) should pass."""
+        q = _q(options=['Kuala Lumpur', 'George Town', 'Putrajaya', 'Johor Bahru'])
+        err = ContentValidator.validate_option_length_parity(q)
+        assert err is None
+
+    def test_extreme_imbalance_rejected(self):
+        """Shortest 4 chars vs longest 16 chars → 4:1 ratio → rejected."""
+        q = _q(options=['Ipoh', 'Amerika Syarikat', 'Kuala Lumpur', 'George Town'])
+        err = ContentValidator.validate_option_length_parity(q)
+        assert err is not None
+        assert 'imbalance' in err
+
+    def test_exactly_3_to_1_ratio_rejected(self):
+        """Ratio exactly 3.0 triggers rejection (threshold is >=3.0)."""
+        short = 'AB'          # 2 chars
+        long_ = 'ABCDEF'      # 6 chars  → 6/2 = 3.0
+        q = _q(options=[short, long_, 'ABCD', 'ABCDE'])
+        err = ContentValidator.validate_option_length_parity(q)
+        assert err is not None
+
+    def test_just_below_threshold_passes(self):
+        """Ratio below 3.0 should pass."""
+        short = 'ABC'         # 3 chars
+        long_ = 'ABCDEFGH'   # 8 chars → 8/3 = 2.67
+        q = _q(options=[short, long_, 'ABCDE', 'ABCDEF'])
+        err = ContentValidator.validate_option_length_parity(q)
+        assert err is None
+
+    def test_rn_question_exempt(self):
+        """Roman Numeral questions are exempt from parity check."""
+        rn_stem = (
+            'I Amerika menentang cukai tanpa perwakilan\n'
+            'II Revolusi berlaku pada 1776\n'
+            'III Jefferson menulis Perisytiharan Kemerdekaan\n\n'
+            'Antara pernyataan di atas, yang manakah BETUL?'
+        )
+        # RN options have inherently different lengths
+        q = _q(
+            stem=rn_stem,
+            options=['I dan II sahaja', 'I dan III sahaja', 'II dan III sahaja', 'I, II dan III'],
+        )
+        err = ContentValidator.validate_option_length_parity(q)
+        assert err is None
+
+    def test_report_shows_short_and_long_option(self):
+        """Error message should quote both the short and the long option."""
+        q = _q(options=['Ipoh', 'Amerika Syarikat', 'Kuala Lumpur', 'George Town'])
+        err = ContentValidator.validate_option_length_parity(q)
+        assert err is not None
+        assert 'Ipoh' in err
+        assert 'Amerika Syarikat' in err
+
+    def test_single_char_option_rejected(self):
+        """A 1-char option next to a 4+-char option triggers rejection."""
+        q = _q(options=['A', 'Kuala Lumpur', 'George Town', 'Johor Bahru'])
+        err = ContentValidator.validate_option_length_parity(q)
+        assert err is not None
+
+    def test_equal_length_options_pass(self):
+        """All options same length should pass."""
+        q = _q(options=['ABCD', 'EFGH', 'IJKL', 'MNOP'])
+        err = ContentValidator.validate_option_length_parity(q)
+        assert err is None
+
+
+class TestOptionParallelism:
+    """Phase 3 — validate_option_parallelism() unit tests."""
+
+    def test_all_four_me_verbs_pass(self):
+        """Four meN- verb options → grammatically parallel → pass."""
+        q = _q(options=[
+            'Mengembangkan ekonomi negara',
+            'Meningkatkan pendapatan rakyat',
+            'Memajukan sektor industri',
+            'Mengurangkan kadar kemiskinan',
+        ])
+        err = ContentValidator.validate_option_parallelism(q)
+        assert err is None
+
+    def test_three_me_verbs_one_other_rejected(self):
+        """3 meN- verbs + 1 non-verb → non-parallel → rejected."""
+        q = _q(options=[
+            'Mengembangkan ekonomi negara',
+            'Meningkatkan pendapatan rakyat',
+            'Memajukan sektor industri',
+            'Ekonomi negara bertumbuh pesat',
+        ])
+        err = ContentValidator.validate_option_parallelism(q)
+        assert err is not None
+        assert 'parallel' in err
+
+    def test_two_me_verbs_not_treated_as_action_type(self):
+        """Only 2 meN- openers → ambiguous, not treated as action question → pass."""
+        q = _q(options=[
+            'Mengembangkan ekonomi',
+            'Meningkatkan pendapatan',
+            '1776',
+            'George Washington',
+        ])
+        err = ContentValidator.validate_option_parallelism(q)
+        assert err is None
+
+    def test_non_action_options_pass(self):
+        """Date/name/place options require no parallelism check."""
+        q = _q(options=['Kuala Lumpur', 'George Town', 'Putrajaya', 'Johor Bahru'])
+        err = ContentValidator.validate_option_parallelism(q)
+        assert err is None
+
+    def test_rn_question_exempt(self):
+        """Roman Numeral questions skip the parallelism check."""
+        rn_stem = (
+            'I Amerika menentang cukai tanpa perwakilan\n'
+            'II Revolusi berlaku pada 1776\n'
+            'III Jefferson menulis Perisytiharan Kemerdekaan\n\n'
+            'Antara pernyataan di atas, yang manakah BETUL?'
+        )
+        q = _q(
+            stem=rn_stem,
+            options=['I dan II sahaja', 'I dan III sahaja', 'II dan III sahaja', 'I, II dan III'],
+        )
+        err = ContentValidator.validate_option_parallelism(q)
+        assert err is None
+
+    def test_error_message_contains_non_parallel_option(self):
+        """Error should quote the option that broke parallelism."""
+        q = _q(options=[
+            'Mengembangkan ekonomi',
+            'Meningkatkan pendapatan',
+            'Memajukan industri',
+            'Ekonomi berkembang',
+        ])
+        err = ContentValidator.validate_option_parallelism(q)
+        assert err is not None
+        assert 'Ekonomi berkembang' in err
+
+    def test_passive_voice_breaks_parallelism(self):
+        """Passive constructions (di-) among meN- options → rejected."""
+        q = _q(options=[
+            'Mengembangkan ekonomi',
+            'Meningkatkan pendapatan',
+            'Memajukan industri',
+            'Dikurangkan kemiskinan',
+        ])
+        err = ContentValidator.validate_option_parallelism(q)
+        assert err is not None
+
+    def test_all_passive_not_action_type(self):
+        """All di- passive options → fewer than 3 meN- → not action-type → pass."""
+        q = _q(options=[
+            'Dikembangkan oleh kerajaan',
+            'Ditingkatkan pendapatan',
+            'Dimajukan industri',
+            'Dikurangkan kemiskinan',
+        ])
+        err = ContentValidator.validate_option_parallelism(q)
+        assert err is None

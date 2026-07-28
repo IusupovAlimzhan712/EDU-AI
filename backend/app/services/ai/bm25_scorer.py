@@ -86,3 +86,14 @@ class BM25Scorer:
             result += idf * (numerator / denominator)
 
         return result
+
+
+"""  
+The formula for each query term is:
+  IDF × (tf × (k1+1)) / (tf + k1 × (1 - b + b × docLen/avgDocLen))
+  Where:
+  - tf = how many times the term appears in this document
+  - IDF = log of how rare the term is across all documents
+  - k1 = 1.5 — controls how much term frequency matters (diminishing returns)
+  - b = 0.75 — controls how much document length is penalized
+"""

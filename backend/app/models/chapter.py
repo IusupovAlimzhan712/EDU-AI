@@ -1,9 +1,3 @@
-"""
-Chapter entity - Table 4.33 in FYP1 report.
-
-Composite primary key (form_level, chapter_id) as specified in the
-ERD's 3NF normalization step.
-"""
 from ..extensions import db
 
 

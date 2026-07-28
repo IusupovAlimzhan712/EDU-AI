@@ -1,10 +1,4 @@
-"""
-Student entity - Table 4.30 in FYP1 report.
-
-Extended with `full_name` and `form_level` to match what the frontend
-Register form collects. These are documented in docs/DEVIATIONS.md.
-"""
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from ..extensions import db
 
@@ -21,8 +15,30 @@ class Student(db.Model):
         'registrationDate', db.Date, nullable=False, default=date.today
     )
 
+    # Learning preferences — nullable so existing rows default to None (resolved at use time)
+    quiz_difficulty = db.Column('quizDifficulty', db.String(16), nullable=True)
+    questions_per_quiz = db.Column('questionsPerQuiz', db.Integer, nullable=True)
+
+    # Brute-force protection (UC-F1.2 E1)
+    failed_attempts = db.Column('failedAttempts', db.Integer, nullable=False,
+                                default=0, server_default='0')
+    locked_until = db.Column('lockedUntil', db.DateTime, nullable=True)
+
+    def is_locked(self) -> bool:
+        """Return True if the account is currently within a lock window."""
+        if not self.locked_until:
+            return False
+        lu = self.locked_until
+        if lu.tzinfo is None:
+            lu = lu.replace(tzinfo=timezone.utc)
+        return lu > datetime.now(timezone.utc)
+
     __table_args__ = (
         db.CheckConstraint('formLevel IN (4, 5)', name='ck_student_form_level'),
+        db.CheckConstraint(
+            "quizDifficulty IS NULL OR quizDifficulty IN ('easy', 'medium', 'hard')",
+            name='ck_student_quiz_difficulty',
+        ),
     )
 
     # --- Relationships ---
@@ -48,6 +64,8 @@ class Student(db.Model):
             'formLevel': self.form_level,
             'registrationDate': self.registration_date.isoformat()
                 if self.registration_date else None,
+            'quizDifficulty': self.quiz_difficulty,
+            'questionsPerQuiz': self.questions_per_quiz,
         }
 
     def __repr__(self) -> str:

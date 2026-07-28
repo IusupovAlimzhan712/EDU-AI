@@ -13,7 +13,7 @@ Responsibilities:
 """
 import hashlib
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 from flask import current_app
@@ -32,11 +32,12 @@ from ..repositories import (
     PasswordResetRepository,
 )
 from ..utils.errors import (
+    BadRequestError,
     ConflictError,
     NotFoundError,
+    TooManyRequestsError,
     UnauthorizedError,
     ValidationError,
-    BadRequestError,
 )
 from ..utils.validators import (
     validate_email_address,
@@ -44,6 +45,10 @@ from ..utils.validators import (
     validate_full_name,
     validate_form_level,
 )
+
+
+_MAX_FAILED_ATTEMPTS = 5       # trigger lock after this many consecutive failures
+_LOCK_DURATION_MINUTES = 15    # minutes the account stays locked
 
 
 class AccountService:
@@ -103,17 +108,45 @@ class AccountService:
 
     @staticmethod
     def login(email: str, password: str) -> Tuple[Student, dict]:
-        """Authenticate an email + password pair (UC 4.3.2).
-
-        Returns (student, tokens). Raises UnauthorizedError on bad creds.
-        """
         if not email or not password:
             raise UnauthorizedError('Email and password are required.')
 
         student = StudentRepository.get_by_email(email.strip())
-        # Generic message — don't leak whether the email exists.
-        if not student or not bcrypt.check_password_hash(student.password_hash, password):
+
+        # --- Check lock BEFORE verifying password ---
+        if student and student.is_locked():
+            lu = student.locked_until
+            if lu.tzinfo is None:
+                lu = lu.replace(tzinfo=timezone.utc)
+            remaining_secs = int((lu - datetime.now(timezone.utc)).total_seconds())
+            remaining_mins = max(1, (remaining_secs + 59) // 60)
+            raise TooManyRequestsError(
+                f'Account locked after too many failed attempts. '
+                f'Try again in {remaining_mins} minute(s).'
+            )
+
+        # --- Verify credentials ---
+        password_ok = student and bcrypt.check_password_hash(student.password_hash, password)
+        if not password_ok:
+            if student:
+                student.failed_attempts = (student.failed_attempts or 0) + 1
+                if student.failed_attempts >= _MAX_FAILED_ATTEMPTS:
+                    student.locked_until = (
+                        datetime.now(timezone.utc).replace(tzinfo=None)
+                        + timedelta(minutes=_LOCK_DURATION_MINUTES)
+                    )
+                    StudentRepository.commit()
+                    raise TooManyRequestsError(
+                        f'Account locked after {_MAX_FAILED_ATTEMPTS} failed attempts. '
+                        f'Try again in {_LOCK_DURATION_MINUTES} minute(s).'
+                    )
+                StudentRepository.commit()
             raise UnauthorizedError('Invalid email or password.')
+
+        # --- Successful login: clear lock state ---
+        if student.failed_attempts or student.locked_until:
+            student.failed_attempts = 0
+            student.locked_until = None
 
         tokens = AccountService._issue_tokens(student)
         StudentRepository.commit()
@@ -158,12 +191,26 @@ class AccountService:
         student_id: int,
         full_name: Optional[str] = None,
         form_level=None,
+        quiz_difficulty: Optional[str] = None,
+        questions_per_quiz: Optional[int] = None,
     ) -> Student:
         student = AccountService.get_profile(student_id)
         if full_name is not None:
             student.full_name = validate_full_name(full_name)
         if form_level is not None:
             student.form_level = validate_form_level(form_level)
+        if quiz_difficulty is not None:
+            if quiz_difficulty not in ('easy', 'medium', 'hard'):
+                raise ValidationError(
+                    errors={'quizDifficulty': "Must be 'easy', 'medium', or 'hard'."}
+                )
+            student.quiz_difficulty = quiz_difficulty
+        if questions_per_quiz is not None:
+            if questions_per_quiz not in (5, 10, 15, 20):
+                raise ValidationError(
+                    errors={'questionsPerQuiz': 'Must be 5, 10, 15, or 20.'}
+                )
+            student.questions_per_quiz = questions_per_quiz
         StudentRepository.commit()
         return student
 

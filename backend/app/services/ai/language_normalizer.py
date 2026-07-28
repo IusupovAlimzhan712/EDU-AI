@@ -54,6 +54,33 @@ _REPLACEMENTS: list[tuple[re.Pattern, str]] = [
     (re.compile(r'\baja\b',           re.IGNORECASE), 'sahaja'),
     (re.compile(r'\bemang\b',         re.IGNORECASE), 'memang'),
 
+    # identitas → identiti (Indonesian spelling)
+    (re.compile(r'\bidentitas\b',     re.IGNORECASE), 'identiti'),
+
+    # mengadopsi → menerima pakai (Indonesian loanword)
+    (re.compile(r'\bmengadopsi\b',    re.IGNORECASE), 'menerima pakai'),
+
+    # gelar → gelaran (Indonesian spelling)
+    (re.compile(r'\bgelar\b',         re.IGNORECASE), 'gelaran'),
+
+    # kekuasaan → kuasa (Indonesian morphology)
+    (re.compile(r'\bkekuasaan\b',     re.IGNORECASE), 'kuasa'),
+
+    # peran → peranan (Indonesian truncated form)
+    (re.compile(r'\bperan\b',         re.IGNORECASE), 'peranan'),
+
+    # keunggulan → kelebihan (Indonesian register)
+    (re.compile(r'\bkeunggulan\b',    re.IGNORECASE), 'kelebihan'),
+
+    # memberikan → memberi (Indonesian causative form)
+    (re.compile(r'\bmemberikan\b',    re.IGNORECASE), 'memberi'),
+
+    # dimana → di mana (Indonesian spelling — no space)
+    (re.compile(r'\bdimana\b',        re.IGNORECASE), 'di mana'),
+
+    # sehingga → hingga (Indonesian conjunction form)
+    (re.compile(r'\bsehingga\b',      re.IGNORECASE), 'hingga'),
+
     # Overexplaining filler phrases the AI uses in Indonesian style
     (re.compile(r'\bhal ini menunjukkan bahwa\b', re.IGNORECASE), 'ini menunjukkan bahawa'),
     (re.compile(r'\bhal tersebut\b',  re.IGNORECASE), 'perkara tersebut'),
@@ -66,6 +93,8 @@ INDONESIAN_MARKERS: frozenset[str] = frozenset({
     'banget', 'gimana', 'gue', 'gua', 'emang', 'udah', 'aja',
     'nggak', 'ngga', 'gak', 'kayak', 'tuh', 'nih', 'sih', 'doang',
     'bahwa', 'karena', 'memiliki', 'menyebutkan',
+    'identitas', 'mengadopsi', 'gelar', 'kekuasaan', 'peran',
+    'keunggulan', 'memberikan', 'dimana', 'sehingga',
 })
 
 # U+FFFD = Unicode replacement character (signals encoding failure)

@@ -11,16 +11,10 @@ from flask import Blueprint, request, jsonify, Response, stream_with_context
 from ..services import TutorService
 from ..utils.errors import BadRequestError
 from ._decorators import auth_required, current_student_id
+from ._utils import _body
 
 
 tutor_bp = Blueprint('tutor', __name__)
-
-
-def _body() -> dict:
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        raise BadRequestError('Request body must be JSON.')
-    return data
 
 
 @tutor_bp.get('/me/topics/<int:topic_id>/conversation')

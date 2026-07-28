@@ -1,14 +1,3 @@
-"""
-Authentication routes.
-
-UC coverage:
-  POST /api/auth/register         -> UC 4.3.1, 4.3.3
-  POST /api/auth/login            -> UC 4.3.2, 4.3.5
-  POST /api/auth/logout           -> UC 4.3.6
-  POST /api/auth/refresh          -> token refresh
-  POST /api/auth/forgot-password  -> UC 4.3.4 (step 1)
-  POST /api/auth/reset-password   -> UC 4.3.4 (step 2)
-"""
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import (
     jwt_required,
@@ -17,22 +6,14 @@ from flask_jwt_extended import (
 )
 
 from ..services import AccountService
-from ..utils.errors import BadRequestError
+from ._utils import _body
 
 auth_bp = Blueprint('auth', __name__)
 
 
-def _body() -> dict:
-    """Return the JSON body or raise a 400."""
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        raise BadRequestError('Request body must be JSON.')
-    return data
 
-
-# ---------------------------------------------------------------------------
 # Registration
-# ---------------------------------------------------------------------------
+
 
 @auth_bp.post('/register')
 def register():
@@ -50,9 +31,9 @@ def register():
     }), 201
 
 
-# ---------------------------------------------------------------------------
+
 # Login / Logout / Refresh
-# ---------------------------------------------------------------------------
+
 
 @auth_bp.post('/login')
 def login():

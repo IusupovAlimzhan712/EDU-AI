@@ -1,23 +1,4 @@
-"""
-EssayAttempt — one student's attempt at one EssayQuestion.
-
-grading_status lifecycle:
-  'pending'  → attempt created, not yet submitted
-  'grading'  → SSE stream in progress
-  'done'     → feedback stored, score assigned
-  'failed'   → LLM grading hit an unrecoverable error
-
-is_note_form: set only for 'esei' type questions; null for 'struktur'.
-  When True, aras_level is clamped to ≤2 and score to ≤4 in backend code
-  regardless of what the LLM returns.
-
-matched_codes_json (struktur only): list of matched node results preserving
-  F/H/C hierarchy, including evidence quotes. Null for esei.
-
-feedback_json: stored as-is from LLM response (validated before storage).
-  For esei: includes arasDescriptorScores and arasReasoning.
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..extensions import db
 
@@ -54,7 +35,7 @@ class EssayAttempt(db.Model):
     matched_codes_json = db.Column('matchedCodesJson', db.JSON, nullable=True)
     feedback_json = db.Column('feedbackJson', db.JSON, nullable=True)
     started_at = db.Column(
-        'startedAt', db.DateTime, nullable=False, default=datetime.utcnow
+        'startedAt', db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     submitted_at = db.Column('submittedAt', db.DateTime, nullable=True)
 

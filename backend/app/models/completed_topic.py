@@ -1,10 +1,4 @@
-"""
-CompletedTopic junction table - Table 4.35 in FYP1 report.
-
-Implements the many-to-many between LearningProgress and Topic for topic
-completion tracking (1NF normalization).
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..extensions import db
 
@@ -25,7 +19,7 @@ class CompletedTopic(db.Model):
         primary_key=True,
     )
     completed_at = db.Column(
-        'completedAt', db.DateTime, nullable=False, default=datetime.utcnow
+        'completedAt', db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
 
     progress = db.relationship('LearningProgress', back_populates='completed_topics')

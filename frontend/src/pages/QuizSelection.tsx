@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  ClipboardList, Clock, Play, RotateCw, Trophy, Sparkles,
+  Clock, Lock, Play, RotateCw, Trophy, Sparkles,
 } from 'lucide-react';
 import { AppSidebar } from '../components/AppSidebar';
 import { Button } from '../components/ui/button';
@@ -8,109 +8,95 @@ import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth } from '../context/AuthContext';
 import { api, QuizSummary, APIError } from '../lib/api';
 
+// ── Quiz card ─────────────────────────────────────────────────────────────────
+
 interface QuizCardProps {
   quiz: QuizSummary;
-  isMega?: boolean;
   startingId: number | null;
-  questionsPerQuiz: number | null | undefined;
   onStartOrResume: (quiz: QuizSummary) => void;
 }
 
-function QuizCard({ quiz, isMega, startingId, questionsPerQuiz, onStartOrResume }: QuizCardProps) {
+function QuizCard({ quiz, startingId, onStartOrResume }: QuizCardProps) {
   const inProgress = quiz.hasInProgressAttempt;
   const completed = (quiz.attemptCount ?? 0) > 0;
   const isStarting = startingId === quiz.quizId;
+  const locked = quiz.isLocked;
 
   return (
-    <div
-      className={`bg-white rounded-xl shadow-edu-sm p-5 ${
-        isMega ? 'border-2 border-[#7C3AED]/30' : ''
-      }`}
-    >
+    <div className={`bg-white rounded-xl shadow-edu-sm p-5 ${locked ? 'opacity-75' : ''}`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            {isMega && (
-              <span className="px-2 py-0.5 text-xs font-bold text-[#7C3AED] bg-[#EDE9FE] rounded">
-                MEGA
-              </span>
-            )}
-            <span className="px-2 py-0.5 text-xs text-[#1E3A8A] bg-[#DBEAFE] rounded flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> AI-generated
-            </span>
-            {inProgress && (
+          {inProgress && (
+            <div className="flex items-center gap-2 mb-1">
               <span className="px-2 py-0.5 text-xs text-[#F59E0B] bg-[#FEF3C7] rounded flex items-center gap-1">
                 <Clock className="w-3 h-3" /> Resume
               </span>
-            )}
-          </div>
+            </div>
+          )}
           <h3 className="font-bold text-[#111827] leading-tight">{quiz.title}</h3>
         </div>
       </div>
 
-      <div className="flex items-center gap-4 text-sm text-[#6B7280] mb-4 flex-wrap">
-        <span className="flex items-center gap-1">
-          <ClipboardList className="w-4 h-4" />
-          {questionsPerQuiz ?? quiz.defaultQuestionCount} questions per attempt
-        </span>
-        {completed && (
-          <span className="text-[#059669]">
-            {quiz.attemptCount} {quiz.attemptCount === 1 ? 'attempt' : 'attempts'}
-          </span>
-        )}
-        {quiz.bestPercentage !== null && (
-          <span className="flex items-center gap-1 text-[#F59E0B]">
-            <Trophy className="w-4 h-4" />
-            Best: {quiz.bestPercentage}%
-          </span>
-        )}
-        {completed && (
-          <span
-            className="text-xs px-2 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280]"
-            title={`Questions reset every ${quiz.cycleSize} attempts to keep variety fresh`}
+      {(completed || quiz.bestPercentage !== null) && (
+        <div className="flex items-center gap-4 text-sm text-[#6B7280] mb-4 flex-wrap">
+          {completed && (
+            <span className="text-[#059669]">
+              {quiz.attemptCount} {quiz.attemptCount === 1 ? 'attempt' : 'attempts'}
+            </span>
+          )}
+          {quiz.bestPercentage !== null && (
+            <span className="flex items-center gap-1 text-[#F59E0B]">
+              <Trophy className="w-4 h-4" />
+              Best: {quiz.bestPercentage}%
+            </span>
+          )}
+        </div>
+      )}
+
+      {locked ? (
+        <>
+          <Button
+            disabled
+            className="w-full bg-[#9CA3AF] text-white cursor-not-allowed"
           >
-            {quiz.attemptsInCycle}/{quiz.cycleSize}
-          </span>
-        )}
-      </div>
-
-      <Button
-        onClick={() => onStartOrResume(quiz)}
-        disabled={isStarting}
-        className={`w-full ${
-          isMega
-            ? 'bg-[#7C3AED] hover:bg-[#6D28D9]'
-            : 'bg-[#1E3A8A] hover:bg-[#1E40AF]'
-        } text-white`}
-      >
-        {isStarting ? (
-          'Starting…'
-        ) : inProgress ? (
-          <>
-            <RotateCw className="w-4 h-4 mr-2" />
-            Resume Quiz
-          </>
-        ) : completed ? (
-          <>
-            <Sparkles className="w-4 h-4 mr-2" />
-            Generate New Quiz
-          </>
-        ) : (
-          <>
-            <Play className="w-4 h-4 mr-2" />
-            Generate Quiz
-          </>
-        )}
-      </Button>
-
-      {!inProgress && !completed && (
-        <p className="text-xs text-[#6B7280] mt-2 text-center">
-          Questions generated fresh by AI from the KSSM textbook.
-        </p>
+            <Lock className="w-4 h-4 mr-2" />
+            Complete Chapter First
+          </Button>
+          <p className="text-xs text-[#6B7280] mt-2 text-center">
+            Complete all topics in this chapter to unlock the quiz.
+          </p>
+        </>
+      ) : (
+        <Button
+          onClick={() => onStartOrResume(quiz)}
+          disabled={isStarting}
+          className="w-full bg-[#1E3A8A] hover:bg-[#1E40AF] text-white"
+        >
+          {isStarting ? (
+            'Starting…'
+          ) : inProgress ? (
+            <>
+              <RotateCw className="w-4 h-4 mr-2" />
+              Resume Quiz
+            </>
+          ) : completed ? (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Generate New Quiz
+            </>
+          ) : (
+            <>
+              <Play className="w-4 h-4 mr-2" />
+              Generate Quiz
+            </>
+          )}
+        </Button>
       )}
     </div>
   );
 }
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 interface QuizSelectionProps {
   onNavigate: (page: any, params?: any) => void;
@@ -132,22 +118,15 @@ export function QuizSelection({ onNavigate }: QuizSelectionProps) {
     setError(null);
     api
       .listQuizzes(parseInt(selectedForm, 10))
-      .then((list) => {
-        if (!cancelled) setQuizzes(list);
-      })
+      .then((list) => { if (!cancelled) setQuizzes(list); })
       .catch((err) => {
         if (!cancelled)
           setError(err instanceof APIError ? err.message : 'Failed to load quizzes.');
       })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
   }, [selectedForm]);
 
-  const megaQuiz = quizzes.find((q) => q.scope === 'form');
   const babQuizzes = quizzes
     .filter((q) => q.scope === 'bab')
     .sort((a, b) => (a.chapterId ?? 0) - (b.chapterId ?? 0));
@@ -156,9 +135,6 @@ export function QuizSelection({ onNavigate }: QuizSelectionProps) {
     setStartingId(quiz.quizId);
     try {
       const attempt = await api.startAttempt(quiz.quizId);
-      // Whether resumed or fresh — both end up at the quiz runner.
-      // The runner itself decides whether to stream questions or display
-      // what was already generated.
       onNavigate('quiz-in-progress', {
         quizId: String(quiz.quizId),
         attemptId: String(attempt.attemptId),
@@ -178,7 +154,7 @@ export function QuizSelection({ onNavigate }: QuizSelectionProps) {
         <div className="bg-white border-b border-[#E5E7EB] px-8 py-6">
           <h1 className="text-2xl font-bold text-[#111827] mb-1">Quizzes</h1>
           <p className="text-[#6B7280]">
-            Each click generates a fresh set of MCQ questions from the KSSM Sejarah
+            Each attempt generates a fresh set of MCQ questions from the KSSM Sejarah
             textbook. Take it as many times as you like — every attempt is unique.
           </p>
         </div>
@@ -197,25 +173,16 @@ export function QuizSelection({ onNavigate }: QuizSelectionProps) {
                 {error}
               </div>
             ) : (
-              <>
-                {megaQuiz && (
-                  <div className="mb-8">
-                    <h2 className="text-sm font-semibold text-[#6B7280] uppercase tracking-wide mb-3">
-                      Full-Form Mega Quiz
-                    </h2>
-                    <QuizCard quiz={megaQuiz} isMega startingId={startingId} questionsPerQuiz={student?.questionsPerQuiz} onStartOrResume={handleStartOrResume} />
-                  </div>
-                )}
-
-                <h2 className="text-sm font-semibold text-[#6B7280] uppercase tracking-wide mb-3">
-                  Per Chapter
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {babQuizzes.map((q) => (
-                    <QuizCard key={q.quizId} quiz={q} startingId={startingId} questionsPerQuiz={student?.questionsPerQuiz} onStartOrResume={handleStartOrResume} />
-                  ))}
-                </div>
-              </>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {babQuizzes.map((q) => (
+                  <QuizCard
+                    key={q.quizId}
+                    quiz={q}
+                    startingId={startingId}
+                    onStartOrResume={handleStartOrResume}
+                  />
+                ))}
+              </div>
             )}
           </Tabs>
         </div>

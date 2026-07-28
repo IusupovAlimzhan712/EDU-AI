@@ -37,11 +37,14 @@ class QuizRepository:
         scope: str,
         title: str,
         default_question_count: int = 10,
+        difficulty: Optional[str] = None,
     ) -> Quiz:
         quiz = QuizRepository.find_by_scope(form_level, chapter_id, scope)
         if quiz:
             quiz.title = title
             quiz.default_question_count = default_question_count
+            if difficulty is not None:
+                quiz.difficulty = difficulty
         else:
             quiz = Quiz(
                 form_level=form_level,
@@ -50,6 +53,7 @@ class QuizRepository:
                 title=title,
                 default_question_count=default_question_count,
                 source='ai',
+                difficulty=difficulty,
             )
             db.session.add(quiz)
         db.session.flush()

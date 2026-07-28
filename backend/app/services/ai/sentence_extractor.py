@@ -17,10 +17,17 @@ from typing import Optional
 _SENT_SPLIT_RE = re.compile(r'(?<=[.!?])\s+(?=[A-ZÀ-ɏ一-鿿])')
 
 MODE_SENTENCE_BUDGET: dict = {
-    'factual': 5,
+    'factual': 10,
     'comparison': 8,
     'kbat': None,
 }
+
+# Technical terms that must survive sentence extraction — sentences containing any
+# of these get a bonus point so they are never dropped in favour of generic sentences.
+_ANCHOR_TERMS = frozenset([
+    'jus soli', 'amcja', 'bumiputera', 'umno', 'kewarganegaraan',
+    'perlembagaan rakyat', 'hartal', 'putera', 'malayan union',
+])
 
 
 def extract_relevant_sentences(
@@ -32,6 +39,8 @@ def extract_relevant_sentences(
 
     If max_sentences is None, return the full context unchanged.
     Falls back to full context when too little text is available.
+    Sentences containing anchor technical terms receive a +2 bonus so they
+    are not dropped in favour of generic high-keyword sentences.
     """
     if max_sentences is None or not context.strip():
         return context
@@ -48,6 +57,8 @@ def extract_relevant_sentences(
     for sent in sentences:
         sent_lower = sent.lower()
         score = sum(1 for kw in keywords if kw in sent_lower)
+        # Bonus for sentences containing critical technical terms
+        score += 2 * sum(1 for term in _ANCHOR_TERMS if term in sent_lower)
         scored.append((score, sent))
 
     scored.sort(key=lambda x: x[0], reverse=True)

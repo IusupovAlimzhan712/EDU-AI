@@ -1,10 +1,10 @@
 """
-Ollama implementation of IChatTutor — streams tokens with validation.
+GPT-4o-mini implementation of IChatTutor — streams tokens with validation.
 
 Strategy:
   1. Classify question type (factual / comparison / kbat).
-  2. Build mode-appropriate prompt + set dynamic num_predict cap.
-  3. Stream tokens from Ollama; accumulate into a buffer.
+  2. Build mode-appropriate prompt + set dynamic max_tokens cap.
+  3. Stream tokens from OpenAI; accumulate into a buffer.
   4. Yield 'token' events in real time (live SSE feel).
   5. Normalize the complete buffer (Indonesian → BM, Unicode fix).
   6. Validate; if failed AND retries remain, regenerate.
@@ -13,13 +13,13 @@ Strategy:
 import logging
 from typing import Iterator, List
 
-from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 
 from .language_normalizer import normalize
-from .llm_config import get_ollama_base_url, get_ollama_model, get_ollama_timeout
+from .llm_config import get_openai_api_key, get_openai_model, get_openai_timeout
 from .question_classifier import MODE_TOKENS
 from .tutor_base import IChatTutor, ChatTurn
-from .tutor_prompts import build_tutor_messages, build_general_tutor_messages
+from .tutor_prompts import build_tutor_messages, build_general_tutor_messages, build_social_messages
 from .tutor_validator import TutorValidator
 
 
@@ -28,18 +28,18 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TOKENS = 400
 
 
-class OllamaChatTutor(IChatTutor):
+class LlmChatTutor(IChatTutor):
 
     MAX_RETRIES = 1  # 1 initial + 1 retry = 2 total attempts
 
-    def _make_llm(self, mode: str = 'kbat') -> ChatOllama:
-        """Create an Ollama LLM instance with the correct token cap for *mode*."""
-        return ChatOllama(
-            base_url=get_ollama_base_url(),
-            model=get_ollama_model(),
+    def _make_llm(self, mode: str = 'kbat') -> ChatOpenAI:
+        """Create a GPT-4o-mini LLM instance with the correct token cap for *mode*."""
+        return ChatOpenAI(
+            api_key=get_openai_api_key(),
+            model=get_openai_model(),
             temperature=0.4,
-            num_predict=MODE_TOKENS.get(mode, _DEFAULT_TOKENS),
-            timeout=get_ollama_timeout(),
+            max_tokens=MODE_TOKENS.get(mode, _DEFAULT_TOKENS),
+            timeout=get_openai_timeout(),
         )
 
     def stream_reply(
@@ -50,6 +50,8 @@ class OllamaChatTutor(IChatTutor):
         history: List[ChatTurn],
         mode: str = 'kbat',
         low_confidence: bool = False,
+        current_page: int = 0,
+        page_referential: bool = False,
     ) -> Iterator[dict]:
         return self._stream(
             question=question,
@@ -59,7 +61,39 @@ class OllamaChatTutor(IChatTutor):
             chapter_name=chapter_name,
             mode=mode,
             low_confidence=low_confidence,
+            current_page=current_page,
+            page_referential=page_referential,
         )
+
+    def stream_social_reply(self, question: str) -> Iterator[dict]:
+        """Handle casual/social messages — no KB retrieval, warm brief response."""
+        llm = ChatOpenAI(
+            api_key=get_openai_api_key(),
+            model=get_openai_model(),
+            temperature=0.7,
+            max_tokens=120,
+            timeout=get_openai_timeout(),
+        )
+        messages = build_social_messages(question)
+        buffer = ''
+        try:
+            for chunk in llm.stream(messages):
+                piece = chunk.content if hasattr(chunk, 'content') else str(chunk)
+                if not piece:
+                    continue
+                buffer += piece
+                yield {'event': 'token', 'chunk': piece}
+        except Exception as exc:
+            logger.warning('Social reply streaming failed: %s', exc)
+            buffer = 'Hai! Saya sedia membantu anda belajar Sejarah. Ada soalan?'
+            yield {'event': 'token', 'chunk': buffer}
+
+        yield {
+            'event': 'final',
+            'content': buffer or 'Hai! Saya sedia membantu anda belajar Sejarah. Ada soalan?',
+            'validation_status': 'ok',
+            'validation_warning': None,
+        }
 
     def stream_general_reply(
         self,
@@ -87,6 +121,8 @@ class OllamaChatTutor(IChatTutor):
         chapter_name: str = '',
         mode: str = 'kbat',
         low_confidence: bool = False,
+        current_page: int = 0,
+        page_referential: bool = False,
     ) -> Iterator[dict]:
         llm = self._make_llm(mode)
         last_warning = None
@@ -109,6 +145,8 @@ class OllamaChatTutor(IChatTutor):
                     history=history,
                     mode=mode,
                     low_confidence=low_confidence,
+                    current_page=current_page,
+                    page_referential=page_referential,
                 )
 
             buffer = ''

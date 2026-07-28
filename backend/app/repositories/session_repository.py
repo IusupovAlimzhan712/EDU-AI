@@ -8,7 +8,7 @@ from ..models import Session
 class SessionRepository:
 
     @staticmethod
-    def get_by_id(session_id: str) -> Optional[Session]:
+    def get_by_jti(session_id: str) -> Optional[Session]:
         return db.session.get(Session, session_id)
 
     @staticmethod
@@ -20,7 +20,7 @@ class SessionRepository:
 
     @staticmethod
     def deactivate(session_id: str) -> None:
-        sess = SessionRepository.get_by_id(session_id)
+        sess = SessionRepository.get_by_jti(session_id)
         if sess:
             sess.deactivate()
             db.session.flush()
@@ -33,5 +33,5 @@ class SessionRepository:
 
     @staticmethod
     def is_active(session_id: str) -> bool:
-        sess = SessionRepository.get_by_id(session_id)
+        sess = SessionRepository.get_by_jti(session_id)
         return bool(sess and sess.is_active)

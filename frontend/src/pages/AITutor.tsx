@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Bot, Send, Square, Trash2, AlertTriangle, Sparkles } from 'lucide-react';
 import { AppSidebar } from '../components/AppSidebar';
 import { MarkdownMessage } from '../components/MarkdownMessage';
+import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
 import { api, ChatMessage } from '../lib/api';
+import { highlightKeyTerms } from '../lib/keyTerms';
 
 interface AITutorProps {
   onNavigate: (page: any, params?: any) => void;
@@ -86,6 +88,8 @@ export function AITutor({ onNavigate }: AITutorProps) {
               content: final.content,
               validationStatus: final.validationStatus,
               validationWarning: final.validationWarning,
+              sourcePages: final.sourcePages,
+              sourceTopics: final.sourceTopics,
               createdAt: new Date().toISOString(),
             },
           ]);
@@ -222,16 +226,38 @@ export function AITutor({ onNavigate }: AITutorProps) {
                     </div>
                     <div className="flex-1 min-w-0 max-w-[78%]">
                       <div className="bg-white border border-[#E5E7EB] rounded-2xl rounded-tl-sm px-4 py-3 shadow-edu-sm overflow-hidden">
-                        <MarkdownMessage content={m.content} />
+                        <MarkdownMessage content={highlightKeyTerms(m.content)} />
                       </div>
-                      {m.validationStatus === 'warned' && (
-                        <div className="mt-1.5 flex items-start gap-1.5 px-1">
-                          <AlertTriangle className="w-3 h-3 text-[#F59E0B] flex-shrink-0 mt-0.5" />
-                          <p className="text-xs text-[#92400E] break-words">
-                            {m.validationWarning ?? 'Jawapan ini belum disahkan sepenuhnya.'}
-                          </p>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2 px-1">
+                        {m.sourcePages?.length ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button className="mt-1 text-[#D1D5DB] hover:text-[#9CA3AF] transition-colors text-sm leading-none select-none cursor-default">
+                                ···
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="bottom"
+                              sideOffset={4}
+                              className="bg-white border border-[#E5E7EB] text-[#374151] shadow-edu-sm rounded-lg px-3 py-2 text-xs max-w-[220px]"
+                            >
+                              <p className="font-semibold text-[#111827] mb-0.5">Sumber</p>
+                              {m.sourceTopics?.length ? (
+                                <p className="text-[#6B7280] mb-0.5">{m.sourceTopics.join(', ')}</p>
+                              ) : null}
+                              <p className="text-[#6B7280]">Hlm {m.sourcePages.join(', ')}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : null}
+                        {m.validationStatus === 'warned' && (
+                          <div className="mt-1.5 flex items-start gap-1.5">
+                            <AlertTriangle className="w-3 h-3 text-[#F59E0B] flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-[#92400E] break-words">
+                              {m.validationWarning ?? 'Jawapan ini belum disahkan sepenuhnya.'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )

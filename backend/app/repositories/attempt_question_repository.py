@@ -1,4 +1,5 @@
 """AttemptQuestionRepository — per-attempt question snapshots."""
+import random
 from typing import List, Optional
 
 from ..extensions import db
@@ -23,12 +24,21 @@ class AttemptQuestionRepository:
         stem: str, options: list, correct_index: int,
         explanation: str = '', points: int = 1,
     ) -> AttemptQuestion:
+        # Shuffle options so the correct answer is not always at the LLM's
+        # preferred position (almost always index 0 due to prompt anchoring).
+        # shuffled_order[i] is the original index of the element now at position i.
+        shuffled_order = list(range(len(options)))
+        random.shuffle(shuffled_order)
+        shuffled_options = [options[i] for i in shuffled_order]
+        # Find where the original correct answer landed after shuffle.
+        new_correct_index = shuffled_order.index(correct_index)
+
         row = AttemptQuestion(
             attempt_id=attempt_id,
             order_index=order_index,
             stem=stem,
-            options=options,
-            correct_index=correct_index,
+            options=shuffled_options,
+            correct_index=new_correct_index,
             explanation=explanation,
             points=points,
         )

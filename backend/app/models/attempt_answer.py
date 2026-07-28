@@ -1,10 +1,4 @@
-"""
-AttemptAnswer — one student's chosen option for one attempt_question.
-
-Step 5 change: FK is now attempt_question.attemptQuestionId (per-attempt
-snapshots), not quiz_question.questionId.
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..extensions import db
 
@@ -32,8 +26,8 @@ class AttemptAnswer(db.Model):
         'answeredAt',
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     __table_args__ = (

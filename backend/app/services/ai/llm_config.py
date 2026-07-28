@@ -1,14 +1,14 @@
-"""Centralised Ollama configuration — read once, used everywhere."""
+"""Centralised OpenAI configuration — read once, used everywhere."""
 from flask import current_app
 
 
-def get_ollama_base_url() -> str:
-    return current_app.config['OLLAMA_BASE_URL']
+def get_openai_api_key() -> str:
+    return current_app.config['OPENAI_API_KEY']
 
 
-def get_ollama_model() -> str:
-    return current_app.config['OLLAMA_MODEL']
+def get_openai_model() -> str:
+    return current_app.config['OPENAI_MODEL']
 
 
-def get_ollama_timeout() -> int:
-    return current_app.config['OLLAMA_TIMEOUT_SECONDS']
+def get_openai_timeout() -> int:
+    return current_app.config['OPENAI_TIMEOUT_SECONDS']

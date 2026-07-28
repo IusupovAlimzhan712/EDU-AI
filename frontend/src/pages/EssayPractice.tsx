@@ -27,8 +27,12 @@ export function EssayPractice({ onNavigate }: EssayPracticeProps) {
       .finally(() => setLoading(false));
   }, [student?.formLevel]);
 
-  // Derive unique sorted chapter IDs from loaded questions
-  const availableChapters = [...new Set(questions.map((q) => q.chapterId))].sort((a, b) => a - b);
+  // Derive chapters from questions matching the current difficulty filter only,
+  // so the chapter dropdown stays in sync with visible questions.
+  const chaptersForDifficulty = filterDifficulty !== null
+    ? questions.filter((q) => q.difficulty === filterDifficulty)
+    : questions;
+  const availableChapters = [...new Set(chaptersForDifficulty.map((q) => q.chapterId))].sort((a, b) => a - b);
 
   // Client-side filter
   const filtered = questions.filter((q) => {

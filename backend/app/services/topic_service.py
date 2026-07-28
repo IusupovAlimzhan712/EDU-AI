@@ -157,6 +157,7 @@ class TopicService:
         progress = TopicService._get_progress_or_raise(student_id)
         TopicService.get_topic(topic_id)
         ct = LearningProgressRepository.mark_completed(progress.progress_id, topic_id)
+        LearningProgressRepository.update_streak(progress)
         StudentRepository.commit()
         return ct.to_dict()
 
@@ -282,6 +283,9 @@ class TopicService:
             'quizzesCompleted': quizzes_completed,
             'quizAverage': quiz_average,
             'bestQuizPercentage': best_quiz_percentage,
+            'currentStreak': progress.current_streak or 0,
+            'lastStudyDate': progress.last_study_date.isoformat()
+                if progress.last_study_date else None,
             'lastUpdated': progress.last_updated.isoformat()
                 if progress.last_updated else None,
             'byChapter': sorted(

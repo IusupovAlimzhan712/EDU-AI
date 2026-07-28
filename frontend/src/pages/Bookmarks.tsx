@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppSidebar } from '../components/AppSidebar';
 import { Input } from '../components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Button } from '../components/ui/button';
 import { Search, BookOpen, HelpCircle, PencilLine, Trash2, ExternalLink } from 'lucide-react';
 import { api, TopicSummary, APIError } from '../lib/api';
@@ -27,7 +26,6 @@ function timeAgo(iso?: string): string {
 
 export function Bookmarks({ onNavigate }: BookmarksProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTab, setSelectedTab] = useState('topic');
   const [bookmarks, setBookmarks] = useState<TopicBookmark[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,22 +96,14 @@ export function Bookmarks({ onNavigate }: BookmarksProps) {
         </div>
 
         <div className="p-8 max-w-5xl">
-          <Tabs value={selectedTab} onValueChange={setSelectedTab} className="mb-6">
-            <TabsList className="bg-white border border-[#E5E7EB]">
-              <TabsTrigger value="topic">
-                Topics
-                <span className="ml-2 px-2 py-0.5 bg-[#F3F4F6] text-[#6B7280] text-xs rounded-full">
-                  {bookmarks.length}
-                </span>
-              </TabsTrigger>
-              <TabsTrigger value="quiz" disabled>
-                Quizzes <span className="ml-2 text-xs text-[#9CA3AF]">(Phase 2)</span>
-              </TabsTrigger>
-              <TabsTrigger value="essay" disabled>
-                Essays <span className="ml-2 text-xs text-[#9CA3AF]">(Phase 3)</span>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="mb-6 flex items-center gap-2">
+            <span className="px-3 py-1.5 bg-white border border-[#E5E7EB] rounded-md text-sm font-medium text-[#111827]">
+              Topics
+            </span>
+            <span className="px-2 py-0.5 bg-[#F3F4F6] text-[#6B7280] text-xs rounded-full">
+              {bookmarks.length}
+            </span>
+          </div>
 
           {isLoading ? (
             <div className="text-center py-16 text-[#6B7280]">Loading…</div>

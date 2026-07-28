@@ -1,14 +1,4 @@
-"""
-EssayQuestion — a persistent SPM Sejarah Kertas 2 practice question.
-
-Each row is a complete package: question text + unified F/H/C marking scheme tree
-+ model answer, generated together so the scheme is the source of truth for grading.
-
-question_type:
-  'struktur' — Bahagian A sub-parts; graded by F/H/C code matching (Mana-mana N×1m)
-  'esei'     — Bahagian B part (c); graded holistically via Aras 1-4 rubric
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..extensions import db
 
@@ -28,7 +18,7 @@ class EssayQuestion(db.Model):
     difficulty = db.Column(db.String(16), nullable=False, default='medium')
     marking_scheme_json = db.Column('markingSchemeJson', db.JSON, nullable=False)
     model_answer = db.Column('modelAnswer', db.Text, nullable=False)
-    created_at = db.Column('createdAt', db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column('createdAt', db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         db.CheckConstraint('formLevel IN (4, 5)', name='ck_eq_form_level'),

@@ -1,8 +1,9 @@
 """LearningProgressRepository — DB access for LearningProgress + junction tables."""
+from datetime import date, timedelta
 from typing import List, Optional
 
 from ..extensions import db
-from ..models import LearningProgress, CompletedTopic, BookmarkedTopic
+from ..models import LearningProgress, CompletedTopic, BookmarkedTopic, Topic
 
 
 class LearningProgressRepository:
@@ -42,6 +43,19 @@ class LearningProgressRepository:
         db.session.add(row)
         db.session.flush()
         return row
+
+    @staticmethod
+    def count_completed_in_chapter(progress_id: int, form_level: int, chapter_id: int) -> int:
+        return (
+            db.session.query(db.func.count(CompletedTopic.topic_id))
+            .join(Topic, CompletedTopic.topic_id == Topic.topic_id)
+            .filter(
+                CompletedTopic.progress_id == progress_id,
+                Topic.form_level == form_level,
+                Topic.chapter_id == chapter_id,
+            )
+            .scalar() or 0
+        )
 
     @staticmethod
     def unmark_completed(progress_id: int, topic_id: int) -> bool:
@@ -89,3 +103,27 @@ class LearningProgressRepository:
         db.session.delete(existing)
         db.session.flush()
         return True
+
+    # ---- Streak ----
+
+    @staticmethod
+    def update_streak(progress: LearningProgress) -> None:
+        """Increment streak if today is a new study day; reset if streak was broken.
+
+        Called every time a topic is marked complete. Idempotent within one day:
+        multiple completions on the same day don't change the streak count beyond 1.
+        """
+        today = date.today()
+        last = progress.last_study_date
+
+        if last is None:
+            progress.current_streak = 1
+        elif last == today:
+            return  # already studied today, no change needed
+        elif last == today - timedelta(days=1):
+            progress.current_streak = (progress.current_streak or 0) + 1
+        else:
+            progress.current_streak = 1  # gap in study days — reset streak
+
+        progress.last_study_date = today
+        db.session.flush()

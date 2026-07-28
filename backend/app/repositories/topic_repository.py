@@ -40,3 +40,9 @@ class TopicRepository:
         if not topic_ids:
             return []
         return db.session.query(Topic).filter(Topic.topic_id.in_(topic_ids)).all()
+
+    @staticmethod
+    def count_by_chapter(form_level: int, chapter_id: int) -> int:
+        return db.session.query(db.func.count(Topic.topic_id)).filter_by(
+            form_level=form_level, chapter_id=chapter_id
+        ).scalar() or 0

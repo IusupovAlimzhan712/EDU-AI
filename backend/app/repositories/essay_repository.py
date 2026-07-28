@@ -1,6 +1,8 @@
 """EssayRepository — data access for EssayQuestion and EssayAttempt."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
+
+from sqlalchemy.orm import joinedload
 
 from ..extensions import db
 from ..models import EssayQuestion, EssayAttempt
@@ -17,7 +19,7 @@ class EssayRepository:
         form_level: Optional[int] = None,
         chapter_id: Optional[int] = None,
     ) -> List[EssayQuestion]:
-        q = db.session.query(EssayQuestion)
+        q = db.session.query(EssayQuestion).options(joinedload(EssayQuestion.chapter))
         if form_level is not None:
             q = q.filter(EssayQuestion.form_level == form_level)
         if chapter_id is not None:
@@ -102,7 +104,11 @@ class EssayRepository:
         student_id: int,
         question_id: Optional[int] = None,
     ) -> List[EssayAttempt]:
-        q = db.session.query(EssayAttempt).filter_by(student_id=student_id)
+        q = (
+            db.session.query(EssayAttempt)
+            .options(joinedload(EssayAttempt.question))
+            .filter_by(student_id=student_id)
+        )
         if question_id is not None:
             q = q.filter(EssayAttempt.question_id == question_id)
         return q.order_by(EssayAttempt.started_at.desc()).all()
@@ -133,7 +139,7 @@ class EssayRepository:
     ) -> None:
         attempt.status = 'graded'
         attempt.grading_status = grading_status
-        attempt.submitted_at = attempt.submitted_at or datetime.utcnow()
+        attempt.submitted_at = attempt.submitted_at or datetime.now(timezone.utc)
         attempt.score = score
         attempt.max_score = max_score
         attempt.is_note_form = is_note_form

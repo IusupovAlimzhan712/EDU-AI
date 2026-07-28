@@ -3,31 +3,39 @@ AI services package.
 
 Strategy pattern (FYP1 Section 5.3.3):
   IQuestionGenerator (interface)
-      └─ OllamaQuestionGenerator   (Quiz MCQ generation)
+      └─ LlmQuestionGenerator   (Quiz MCQ generation)
   IChatTutor (interface)
-      └─ OllamaChatTutor           (AI Tutor chat)
+      └─ LlmChatTutor           (AI Tutor chat)
 
 Plus ContentValidator (MCQ) and TutorValidator (chat) for output safety.
 """
 from .base import IQuestionGenerator, GeneratedQuestion
-from .ollama_generator import OllamaQuestionGenerator
+from .llm_generator import LlmQuestionGenerator
 from .content_validator import ContentValidator
 from .language_normalizer import normalize as normalize_language
-from .question_classifier import classify_question
+from .question_classifier import classify_question, is_social_message
 from .tutor_base import IChatTutor, ChatTurn, TutorResponse
-from .ollama_tutor import OllamaChatTutor
+from .llm_tutor import LlmChatTutor
 from .tutor_validator import TutorValidator
 from .entity_gate import (
     check_entity_gate, detect_expected_entity_type,
     context_has_entity, UNCERTAINTY_RESPONSE,
 )
+from .embedding_service import (
+    embed_text, embed_texts, cosine_similarity,
+    serialize_embedding, deserialize_embedding,
+    EMBEDDING_MODEL, EMBEDDING_DIM,
+)
 
 __all__ = [
     'IQuestionGenerator', 'GeneratedQuestion',
-    'OllamaQuestionGenerator', 'ContentValidator',
-    'normalize_language', 'classify_question',
+    'LlmQuestionGenerator', 'ContentValidator',
+    'normalize_language', 'classify_question', 'is_social_message',
     'IChatTutor', 'ChatTurn', 'TutorResponse',
-    'OllamaChatTutor', 'TutorValidator',
+    'LlmChatTutor', 'TutorValidator',
     'check_entity_gate', 'detect_expected_entity_type',
     'context_has_entity', 'UNCERTAINTY_RESPONSE',
+    'embed_text', 'embed_texts', 'cosine_similarity',
+    'serialize_embedding', 'deserialize_embedding',
+    'EMBEDDING_MODEL', 'EMBEDDING_DIM',
 ]

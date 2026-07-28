@@ -1,5 +1,5 @@
 """PasswordResetRepository — DB access for password-reset tokens."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from ..extensions import db
@@ -13,7 +13,7 @@ class PasswordResetRepository:
         token = PasswordResetToken(
             student_id=student_id,
             token_hash=token_hash,
-            expires_at=datetime.utcnow() + timedelta(seconds=expires_in_seconds),
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds),
             used=False,
         )
         db.session.add(token)

@@ -1,6 +1,8 @@
 """QuizAttemptRepository — attempts + answers (FK now to attempt_question)."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
+
+from sqlalchemy.orm import joinedload
 
 from ..extensions import db
 from ..models import QuizAttempt, AttemptAnswer
@@ -16,6 +18,7 @@ class QuizAttemptRepository:
     def create(
         student_id: int, quiz_id: int,
         target_question_count: int = 10,
+        difficulty_target: Optional[str] = None,
     ) -> QuizAttempt:
         att = QuizAttempt(
             student_id=student_id,
@@ -23,6 +26,7 @@ class QuizAttemptRepository:
             status='in_progress',
             generation_status='pending',
             target_question_count=target_question_count,
+            difficulty_target=difficulty_target,
         )
         db.session.add(att)
         db.session.flush()
@@ -38,7 +42,11 @@ class QuizAttemptRepository:
     def list_for_student(
         student_id: int, quiz_id: Optional[int] = None
     ) -> List[QuizAttempt]:
-        q = db.session.query(QuizAttempt).filter_by(student_id=student_id)
+        q = (
+            db.session.query(QuizAttempt)
+            .options(joinedload(QuizAttempt.quiz))
+            .filter_by(student_id=student_id)
+        )
         if quiz_id is not None:
             q = q.filter(QuizAttempt.quiz_id == quiz_id)
         return q.order_by(QuizAttempt.started_at.desc()).all()
@@ -54,7 +62,8 @@ class QuizAttemptRepository:
         correct_count: int, total_questions: int,
     ) -> None:
         attempt.status = 'submitted'
-        attempt.submitted_at = datetime.utcnow()
+        attempt.generation_status = 'ready'
+        attempt.submitted_at = datetime.now(timezone.utc)
         attempt.score = score
         attempt.max_score = max_score
         attempt.correct_count = correct_count
@@ -87,3 +96,7 @@ class QuizAttemptRepository:
         return db.session.query(AttemptAnswer).filter_by(
             attempt_id=attempt_id
         ).all()
+
+    @staticmethod
+    def delete(attempt: QuizAttempt) -> None:
+        db.session.delete(attempt)

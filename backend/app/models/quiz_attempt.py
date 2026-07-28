@@ -1,12 +1,4 @@
-"""
-QuizAttempt — one student's run at one quiz.
-
-Step 5 changes:
-  - New `generation_status` field tracks AI generation progress
-  - New `attempt_questions` relationship (questions live per attempt now)
-  - Old `answers` relationship still works; it now uses attempt_question
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..extensions import db
 
@@ -43,9 +35,13 @@ class QuizAttempt(db.Model):
     target_question_count = db.Column(
         'targetQuestionCount', db.Integer, nullable=False, default=10
     )
+    # Snapshotted from student preference (or quiz template) at attempt creation.
+    # None means medium (generator default). Stored so streaming uses the setting
+    # that was active when the student pressed "Start", not a later change.
+    difficulty_target = db.Column('difficultyTarget', db.String(16), nullable=True)
 
     started_at = db.Column(
-        'startedAt', db.DateTime, nullable=False, default=datetime.utcnow
+        'startedAt', db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     submitted_at = db.Column('submittedAt', db.DateTime, nullable=True)
 
@@ -62,6 +58,10 @@ class QuizAttempt(db.Model):
         db.CheckConstraint(
             "generationStatus IN ('pending', 'generating', 'ready', 'failed')",
             name='ck_attempt_gen_status',
+        ),
+        db.CheckConstraint(
+            "difficultyTarget IS NULL OR difficultyTarget IN ('easy', 'medium', 'hard')",
+            name='ck_attempt_difficulty_target',
         ),
     )
 
@@ -88,6 +88,7 @@ class QuizAttempt(db.Model):
             'status': self.status,
             'generationStatus': self.generation_status,
             'targetQuestionCount': self.target_question_count,
+            'difficultyTarget': self.difficulty_target,
             'startedAt': self.started_at.isoformat() if self.started_at else None,
             'submittedAt': self.submitted_at.isoformat()
                 if self.submitted_at else None,

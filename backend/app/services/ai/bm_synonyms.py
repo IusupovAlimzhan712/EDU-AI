@@ -13,7 +13,7 @@ from typing import List
 SYNONYM_GROUPS: List[tuple] = [
     # Rulers / leadership
     ('raja', 'sultan', 'pemimpin', 'pemerintah', 'penguasa', 'ketua'),
-    ('pengasas', 'pengasas', 'pencipta', 'pembina', 'penubuh'),
+    ('pengasas', 'pencipta', 'pembina', 'penubuh'),
     ('kerajaan', 'pemerintahan', 'empayar', 'kesultanan'),
     ('rakyat', 'penduduk', 'warganegara', 'bangsa', 'masyarakat'),
 
@@ -46,6 +46,19 @@ SYNONYM_GROUPS: List[tuple] = [
     ('pilihan raya', 'pilihan', 'demokrasi', 'mengundi', 'parlimen'),
     ('keselamatan', 'pertahanan', 'tentera', 'polis'),
     ('pembangunan', 'kemajuan', 'pertumbuhan', 'perindustrian'),
+
+    # Post-WWII political organizations / coalitions
+    # 'amcja' — All-Malayan Council of Joint Action (1946–47, Tan Cheng Lock)
+    # 'putera' — Pusat Tenaga Rakyat (coalition partner of AMCJA)
+    # 'hartal' — the general strike organised by AMCJA-PUTERA against Malayan Union
+    ('amcja', 'putera', 'hartal'),
+
+    # Person → organization aliases for retrieval expansion.
+    # 'lock' is the unique discriminating token in 'Tan Cheng Lock'; mapping it to
+    # 'amcja' ensures queries about Tan Cheng Lock also surface AMCJA chunks.
+    ('lock', 'amcja'),
+
+
 ]
 
 # Build a flat lookup: term → set of synonyms (excluding itself)

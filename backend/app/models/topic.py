@@ -1,10 +1,3 @@
-"""
-Topic entity - Table 4.34 in FYP1 report.
-
-Changed in Step 2:
-  - Dropped `content TEXT` column (replaced by PDF + topic_page rows).
-  - Added `pdf_path` and `total_pages` to support the PDF viewer.
-"""
 from ..extensions import db
 
 

@@ -1,10 +1,3 @@
-"""
-Abstract interface for question generators (Strategy pattern).
-
-Any concrete generator (Ollama, OpenAI, mock, etc.) implements this
-interface. Services depend on the interface, not the implementation —
-that's Dependency Inversion from FYP1 Section 5.3.1.
-"""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Iterator, List

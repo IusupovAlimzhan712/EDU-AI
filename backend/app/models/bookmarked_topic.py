@@ -1,7 +1,4 @@
-"""
-BookmarkedTopic junction table - Table 4.36 in FYP1 report.
-"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..extensions import db
 
@@ -22,7 +19,7 @@ class BookmarkedTopic(db.Model):
         primary_key=True,
     )
     bookmarked_at = db.Column(
-        'bookmarkedAt', db.DateTime, nullable=False, default=datetime.utcnow
+        'bookmarkedAt', db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
 
     progress = db.relationship('LearningProgress', back_populates='bookmarked_topics')

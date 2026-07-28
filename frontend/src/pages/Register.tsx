@@ -157,7 +157,7 @@ export function Register({ onNavigate, onLogin }: RegisterProps) {
                   type="text"
                   value={formData.fullName}
                   onChange={(e) => updateField('fullName', e.target.value)}
-                  placeholder="Iusupov Alimzhan"
+                  placeholder="Ahmad bin Abdullah"
                   className={`pl-12 h-11 ${errors.fullName ? 'border-[#DC2626] bg-[#FEE2E2]/50' : ''}`}
                 />
               </div>

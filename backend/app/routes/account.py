@@ -9,17 +9,10 @@ Account routes - the authenticated user's own profile.
 from flask import Blueprint, request, jsonify
 
 from ..services import AccountService
-from ..utils.errors import BadRequestError
 from ._decorators import auth_required, current_student_id
+from ._utils import _body
 
 account_bp = Blueprint('account', __name__)
-
-
-def _body() -> dict:
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        raise BadRequestError('Request body must be JSON.')
-    return data
 
 
 @account_bp.get('')
@@ -37,6 +30,8 @@ def update_me():
         student_id=current_student_id(),
         full_name=data.get('fullName'),
         form_level=data.get('formLevel'),
+        quiz_difficulty=data.get('quizDifficulty'),
+        questions_per_quiz=data.get('questionsPerQuiz'),
     )
     return jsonify({
         'message': 'Profile updated.',

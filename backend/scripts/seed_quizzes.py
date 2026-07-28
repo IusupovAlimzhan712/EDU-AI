@@ -21,6 +21,7 @@ def seed_quiz_placeholders():
             scope='bab',
             title=f'Quiz: Bab {c.chapter_id} — {c.chapter_name} (Form {c.form_level})',
             default_question_count=10,
+            difficulty='sederhana',
         )
         created += 1
 
